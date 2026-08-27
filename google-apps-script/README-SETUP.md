@@ -10,10 +10,43 @@ app and nothing is ever sent anywhere.
 
 ## 2. Add the script
 
-1. In that spreadsheet: **Extensions → Apps Script**.
-2. Delete whatever is in `Code.gs` and paste the contents of the `Code.gs`
+There are two ways to attach a script, and they behave differently.
+
+**Bound (simplest):** in the spreadsheet, choose **Extensions → Apps Script**.
+The script belongs to that sheet, and `SPREADSHEET_ID` in `Code.gs` can stay
+empty.
+
+**Standalone:** a project created from <https://script.google.com>. Its URL
+looks like `script.google.com/u/0/home/projects/…`. A standalone script has no
+"active" spreadsheet, so you must set `SPREADSHEET_ID` near the top of
+`Code.gs` to the long id in your spreadsheet URL:
+
+```
+docs.google.com/spreadsheets/d/THIS_PART_IS_THE_ID/edit
+```
+
+Either way:
+
+1. Delete everything in `Code.gs` — including the default
+   `function myFunction() {}` — and paste the whole contents of the `Code.gs`
    next to this file.
-3. Save (the disk icon).
+2. Save (the disk icon).
+
+## 2b. Run `setup` once, before deploying
+
+1. In the function dropdown next to **Debug**, pick **`setup`**, then **Run**.
+2. Google asks for authorization the first time. Accept it. It will warn that
+   the app is unverified — that is normal for your own script; choose
+   *Advanced → Go to … (unsafe)*.
+3. The execution log should print `Connected to: <your spreadsheet name>`, and a
+   **Ratings** tab appears in the sheet with its headers.
+
+This step matters: a deployment created while the script was still empty has no
+permission to touch Sheets, and will keep failing until you authorize it.
+
+Optionally run **`testAppend`** too — it writes one row labelled
+`صف تجريبي من setup — يمكن حذفه` so you can see the whole path work, then
+delete that row.
 
 ## 3. Deploy it as a Web App
 
@@ -55,6 +88,21 @@ Open the `/exec` URL in a browser. You should see:
 ```
 
 Then submit a rating from the app and watch a row appear in the **Ratings** tab.
+
+## If the sheet stays empty
+
+Check these in order:
+
+- Open the `/exec` URL in a browser. `تعذر العثور على دالة النص البرمجي: doGet`
+  means the deployed version does not contain the code — you saved `Code.gs`
+  but did not deploy a **new version** (see the section below).
+- Run `setup` from the editor. If it throws about `SPREADSHEET_ID`, the script
+  is standalone and the id is missing or wrong.
+- In **Manage deployments**, confirm **Who has access** is **Anyone**. If it
+  says *Anyone with a Google account*, teachers are not signed in and every
+  request is rejected.
+- Check **Executions** in the left sidebar of the editor — failed `doPost` runs
+  appear there with the error.
 
 ## If you change `Code.gs` later
 

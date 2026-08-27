@@ -9,6 +9,18 @@
  * Setup is in README-SETUP.md next to this file.
  */
 
+/**
+ * Only needed when this script is STANDALONE (created from script.google.com
+ * rather than from the sheet's Extensions menu). A standalone script has no
+ * "active" spreadsheet, so it has to be told which file to write to.
+ *
+ * The id is the long string in the spreadsheet URL:
+ *   docs.google.com/spreadsheets/d/THIS_PART/edit
+ *
+ * Leave it empty if the script is bound to the sheet.
+ */
+var SPREADSHEET_ID = '11EhvxLyjYbtw19pQ9SorrIzUpWWrOfTdmZlroFLlrcg'
+
 var SHEET_NAME = 'Ratings'
 var HEADERS = ['التاريخ', 'التقييم', 'الملاحظة', 'المنصة', 'الإصدار', 'المعرّف']
 var MAX_COMMENT = 2000
@@ -74,6 +86,39 @@ function doPost(e) {
   }
 }
 
+/**
+ * Run this once from the editor before deploying.
+ *
+ * It does three useful things: triggers the Google authorization prompt (a
+ * deployment made before the script touched Sheets has no permission to write),
+ * creates the Ratings tab with its headers, and prints the spreadsheet name so
+ * you can confirm it reached the file you meant.
+ */
+function setup() {
+  var sheet = getSheet()
+  var name = sheet.getParent().getName()
+  Logger.log('Connected to: ' + name)
+  Logger.log('Sheet ready: ' + sheet.getName() + ' (rows: ' + sheet.getLastRow() + ')')
+  return name
+}
+
+/** Appends one obviously-labelled row, to prove the whole path works. */
+function testAppend() {
+  var result = doPost({
+    postData: {
+      contents: JSON.stringify({
+        id: 'setup-test-' + Date.now(),
+        rating: 5,
+        comment: 'صف تجريبي من setup — يمكن حذفه',
+        sentAt: new Date().toISOString(),
+        platform: 'editor',
+        version: 'test',
+      }),
+    },
+  })
+  Logger.log(result.getContent())
+}
+
 /** Opening the /exec URL in a browser should say something reassuring. */
 function doGet() {
   return jsonOut({ ok: true, service: 'qirtas-ratings' })
@@ -88,8 +133,20 @@ function isFlooding() {
   return count > MAX_PER_MINUTE
 }
 
+/** Works both bound to a sheet and standalone. */
+function getSpreadsheet() {
+  var active = SpreadsheetApp.getActiveSpreadsheet()
+  if (active) return active
+  if (!SPREADSHEET_ID) {
+    throw new Error(
+      'This script is standalone, so SPREADSHEET_ID must be set to the id in your spreadsheet URL.',
+    )
+  }
+  return SpreadsheetApp.openById(SPREADSHEET_ID)
+}
+
 function getSheet() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet()
+  var ss = getSpreadsheet()
   var sheet = ss.getSheetByName(SHEET_NAME)
   if (!sheet) sheet = ss.insertSheet(SHEET_NAME)
   if (sheet.getLastRow() === 0) {
