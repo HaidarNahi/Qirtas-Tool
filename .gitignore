@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
+.claude/
+
+# Reference scans of the original paper — a real school and teacher are named
+# on them, so they stay out of the repo.
+example of the results.pdf
+example of the results\[image\].png

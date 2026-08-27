@@ -1,0 +1,10 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <g fill="none" stroke="#2B6640" stroke-width="1.1" stroke-linejoin="round" opacity="0.5">
+    <!-- eight-pointed khatam, tessellated on a 60px lattice -->
+    <path d="M60 24 71 35h16v16l11 11-11 11v16H71L60 100 49 89H33V73L22 62l11-11V35h16z"/>
+    <path d="M0 24 11 35h16v16l11 11-11 11v16H11L0 100"/>
+    <path d="M120 24 109 35H93v16L82 62l11 11v16h16l11 11"/>
+    <path d="M60-36 71-25h16v16l11 11-11 11v16H71L60 40 49 29H33V13L22 2 33-9v-16h16z" opacity="0.9"/>
+    <path d="M60 84 71 95h16v16l11 11-11 11v16H71L60 160 49 149H33v-16l-11-11 11-11V95h16z" opacity="0.9"/>
+  </g>
+</svg>
