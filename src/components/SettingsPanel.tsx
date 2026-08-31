@@ -3,7 +3,13 @@ import type { BranchStyle, Dir, Doc, DividerStyle, FontKey, NumeralStyle, PagePa
 import { FONT_LABELS, FONT_STACKS } from '../lib/types'
 import { t } from '../lib/i18n'
 import { Icons, Row, Segmented, Sheet, Toggle, haptic } from './ui'
-import { RATING_ENABLED } from '../lib/config'
+import {
+  APP_VERSION,
+  COPYRIGHT_YEAR,
+  DEVELOPER,
+  DEVELOPER_URL,
+  RATING_ENABLED,
+} from '../lib/config'
 
 const SIZES = [9, 10, 11, 12, 13, 14, 16, 18, 20, 24]
 const SPACINGS = [1, 1.15, 1.3, 1.5, 1.8, 2, 2.5]
@@ -325,6 +331,21 @@ export default function SettingsPanel({
         <Icons.cloudOff />
         {t('offlineReady')}
       </p>
+
+      <footer className="panel-credit">
+        <p className="panel-credit-by">
+          {t('developedBy')}{' '}
+          <a href={DEVELOPER_URL} target="_blank" rel="noopener noreferrer">
+            {DEVELOPER}
+          </a>
+        </p>
+        <p className="panel-credit-legal">
+          {t('allRightsReserved')} · <bdi>© {COPYRIGHT_YEAR} {DEVELOPER}</bdi>
+        </p>
+        <p className="panel-credit-legal">
+          {t('version')} <bdi>{APP_VERSION}</bdi>
+        </p>
+      </footer>
     </Sheet>
   )
 }

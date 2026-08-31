@@ -24,3 +24,8 @@ export const RATING_ENDPOINT: string =
 export const RATING_ENABLED = RATING_ENDPOINT.length > 0
 
 export const APP_VERSION = '1.0.0'
+
+/** Who built and owns قِرطاس. Shown in الإعدادات and in the document metadata. */
+export const DEVELOPER = 'Asas Thaki'
+export const DEVELOPER_URL = 'https://asasthaki.dev/'
+export const COPYRIGHT_YEAR = '2026'

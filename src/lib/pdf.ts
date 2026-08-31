@@ -1,3 +1,4 @@
+import { APP_VERSION, COPYRIGHT_YEAR, DEVELOPER } from './config'
 import { A4_HEIGHT_MM, A4_WIDTH_MM } from './paginate'
 
 /**
@@ -147,6 +148,15 @@ export async function downloadSheetPdf(
   }
 
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true })
+
+  // Attribution lives in the file's properties, not on the page: the sheet
+  // belongs to the teacher and nothing should be printed on it that they did
+  // not put there.
+  pdf.setProperties({
+    creator: `Qirtas — ${DEVELOPER}`,
+    author: DEVELOPER,
+    subject: `Qirtas ${APP_VERSION} · © ${COPYRIGHT_YEAR} ${DEVELOPER}. All rights reserved.`,
+  })
 
   for (let index = 0; index < pages.length; index++) {
     onProgress?.({ page: index + 1, total: pages.length })
