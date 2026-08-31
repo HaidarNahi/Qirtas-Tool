@@ -101,17 +101,22 @@ dropdown, press **Run**, and read the execution log:
 
 ```
 Source     : SPREADSHEET_ID
-File       : قِرطاس — التقييمات
+File       : Qirtas Rating
 File id    : 11EhvxLy…
-URL        : https://docs.google.com/spreadsheets/d/…
-Tab        : Ratings
+URL        : https://docs.google.com/spreadsheets/d/…#gid=1547200461
+Tab        : Ratings (gid 1547200461)
 Ratings    : 7
 ```
 
-That is the file and tab your ratings are actually going into. Ratings that
-"disappeared" are almost always sitting in a different spreadsheet or a
-different tab from the one being watched — nothing in this script ever deletes
-a row. If the URL is not the file you have open, open the one it prints.
+**Open the URL it prints, including the `#gid=` on the end.** That is the file
+*and the tab* your ratings are actually going into, and the `#gid=` part is the
+one that matters most often.
+
+Ratings that "disappeared" are almost always one tab away. The script writes to
+a tab named `Ratings`, which it creates beside whatever sheet the file already
+had — so a new spreadsheet ends up with an empty `Sheet1` at `gid=0` (the tab
+that opens by default) and the real data in `Ratings` next to it. Nothing in
+this script ever deletes a row.
 
 If the count really is `0`, check these in order:
 
