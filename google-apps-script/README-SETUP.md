@@ -25,6 +25,11 @@ looks like `script.google.com/u/0/home/projects/…`. A standalone script has no
 docs.google.com/spreadsheets/d/THIS_PART_IS_THE_ID/edit
 ```
 
+Setting `SPREADSHEET_ID` is safe either way: when it is filled in it wins, even
+for a bound script. Filling it in is the reliable choice, because it is the one
+case where the file receiving your ratings is stated in the source rather than
+inherited from how the project happened to be created.
+
 Either way:
 
 1. Delete everything in `Code.gs` — including the default
@@ -91,11 +96,29 @@ Then submit a rating from the app and watch a row appear in the **Ratings** tab.
 
 ## If the sheet stays empty
 
-Check these in order:
+**Start here: run `whereAmI` from the editor.** Pick it in the function
+dropdown, press **Run**, and read the execution log:
+
+```
+Source     : SPREADSHEET_ID
+File       : قِرطاس — التقييمات
+File id    : 11EhvxLy…
+URL        : https://docs.google.com/spreadsheets/d/…
+Tab        : Ratings
+Ratings    : 7
+```
+
+That is the file and tab your ratings are actually going into. Ratings that
+"disappeared" are almost always sitting in a different spreadsheet or a
+different tab from the one being watched — nothing in this script ever deletes
+a row. If the URL is not the file you have open, open the one it prints.
+
+If the count really is `0`, check these in order:
 
 - Open the `/exec` URL in a browser. `تعذر العثور على دالة النص البرمجي: doGet`
   means the deployed version does not contain the code — you saved `Code.gs`
-  but did not deploy a **new version** (see the section below).
+  but did not deploy a **new version** (see the section below). A healthy
+  deployment answers `{"ok":true,"service":"qirtas-ratings"}`.
 - Run `setup` from the editor. If it throws about `SPREADSHEET_ID`, the script
   is standalone and the id is missing or wrong.
 - In **Manage deployments**, confirm **Who has access** is **Anyone**. If it
@@ -103,6 +126,9 @@ Check these in order:
   request is rejected.
 - Check **Executions** in the left sidebar of the editor — failed `doPost` runs
   appear there with the error.
+- Confirm the tab is still named **Ratings**. Renaming it in the spreadsheet
+  makes the script create a fresh empty `Ratings` tab beside it and write
+  there; `whereAmI` prints the tab it uses.
 
 ## If you change `Code.gs` later
 
