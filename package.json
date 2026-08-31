@@ -2,6 +2,10 @@
   "name": "test-builder-tool",
   "private": true,
   "version": "1.0.0",
+  "description": "قِرطاس — Arabic A4 exam sheet builder for Iraqi teachers.",
+  "author": "Asas Thaki (https://asasthaki.dev/)",
+  "homepage": "https://qirtas.asasthaki.dev",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "vite",

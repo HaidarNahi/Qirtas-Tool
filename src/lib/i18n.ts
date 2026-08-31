@@ -189,6 +189,10 @@ const strings = {
   zoom: 'التكبير',
   fitWidth: 'ملء العرض',
   pageCount: 'عدد الصفحات',
+
+  developedBy: 'تطوير',
+  allRightsReserved: 'جميع الحقوق محفوظة',
+  version: 'الإصدار',
 } as const
 
 export type StringKey = keyof typeof strings

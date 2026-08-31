@@ -259,6 +259,15 @@ cannot reach the app's webfonts, so they are inlined — but only the families a
 weights the sheet can actually use. Inlining all 37 `@font-face` rules on the
 page takes long enough to look like a crash.
 
+## Developer
+
+Built and maintained by **[Asas Thaki](https://asasthaki.dev/)**.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+**Copyright © 2026 Asas Thaki. All rights reserved.**
+
+This is proprietary software, not open source. The repository is readable, but
+no licence is granted to copy, modify, distribute, or create derivative works
+from any part of it. See [LICENSE](LICENSE) for the full terms, and
+[asasthaki.dev](https://asasthaki.dev/) for licensing enquiries.

@@ -956,6 +956,32 @@ button, label, select, input, [contenteditable], .seg-btn, .action, .toggle {
 }
 .panel-foot-note svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
 
+.panel-credit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 6px 4px;
+  margin-top: 2px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+.panel-credit-by {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.panel-credit-by a {
+  color: var(--brand-700);
+  font-weight: 600;
+  text-decoration: none;
+}
+.panel-credit-by a:hover,
+.panel-credit-by a:focus-visible { text-decoration: underline; }
+.panel-credit-legal {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
 .notice {
   border-radius: var(--radius);
   padding: 12px 13px;

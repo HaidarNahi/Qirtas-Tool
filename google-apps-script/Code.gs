@@ -10,14 +10,15 @@
  */
 
 /**
- * Only needed when this script is STANDALONE (created from script.google.com
- * rather than from the sheet's Extensions menu). A standalone script has no
- * "active" spreadsheet, so it has to be told which file to write to.
- *
- * The id is the long string in the spreadsheet URL:
+ * Which spreadsheet to write to. The id is the long string in the URL:
  *   docs.google.com/spreadsheets/d/THIS_PART/edit
  *
- * Leave it empty if the script is bound to the sheet.
+ * When this is set it WINS, even if the script is bound to a spreadsheet.
+ * That is deliberate: a bound script silently ignoring the id you typed here
+ * is how ratings end up in a file you are not looking at. Leave it empty only
+ * if the script is bound and you want the file it is bound to.
+ *
+ * Run `whereAmI` from the editor to see which file actually receives rows.
  */
 var SPREADSHEET_ID = '11EhvxLyjYbtw19pQ9SorrIzUpWWrOfTdmZlroFLlrcg'
 
@@ -96,10 +97,8 @@ function doPost(e) {
  */
 function setup() {
   var sheet = getSheet()
-  var name = sheet.getParent().getName()
-  Logger.log('Connected to: ' + name)
-  Logger.log('Sheet ready: ' + sheet.getName() + ' (rows: ' + sheet.getLastRow() + ')')
-  return name
+  Logger.log(describeTarget(sheet))
+  return sheet.getParent().getName()
 }
 
 /** Appends one obviously-labelled row, to prove the whole path works. */
@@ -119,6 +118,36 @@ function testAppend() {
   Logger.log(result.getContent())
 }
 
+/**
+ * Run this from the editor when ratings are "missing".
+ *
+ * They are almost never lost — they are in a spreadsheet or a tab other than
+ * the one being watched. This prints the exact file, its URL, the tab, and how
+ * many ratings it holds, so the answer takes one click instead of guesswork.
+ *
+ * It is deliberately not exposed through doGet: the /exec URL is public, and
+ * the name and link of the file are not.
+ */
+function whereAmI() {
+  var sheet = getSheet()
+  Logger.log(describeTarget(sheet))
+  return sheet.getParent().getUrl()
+}
+
+/** Shared by setup and whereAmI so both report the same thing. */
+function describeTarget(sheet) {
+  var file = sheet.getParent()
+  var ratings = Math.max(0, sheet.getLastRow() - 1)
+  return [
+    'Source     : ' + (SPREADSHEET_ID ? 'SPREADSHEET_ID' : 'bound spreadsheet'),
+    'File       : ' + file.getName(),
+    'File id    : ' + file.getId(),
+    'URL        : ' + file.getUrl(),
+    'Tab        : ' + sheet.getName(),
+    'Ratings    : ' + ratings,
+  ].join('\n')
+}
+
 /** Opening the /exec URL in a browser should say something reassuring. */
 function doGet() {
   return jsonOut({ ok: true, service: 'qirtas-ratings' })
@@ -133,16 +162,21 @@ function isFlooding() {
   return count > MAX_PER_MINUTE
 }
 
-/** Works both bound to a sheet and standalone. */
+/**
+ * Works both bound to a sheet and standalone.
+ *
+ * An explicit SPREADSHEET_ID is authoritative. The previous order asked for
+ * the active spreadsheet first, which meant a script bound to some other file
+ * kept writing there and quietly discarded the id set above — rows landed in
+ * one spreadsheet while the id pointed at another.
+ */
 function getSpreadsheet() {
+  if (SPREADSHEET_ID) return SpreadsheetApp.openById(SPREADSHEET_ID)
   var active = SpreadsheetApp.getActiveSpreadsheet()
   if (active) return active
-  if (!SPREADSHEET_ID) {
-    throw new Error(
-      'This script is standalone, so SPREADSHEET_ID must be set to the id in your spreadsheet URL.',
-    )
-  }
-  return SpreadsheetApp.openById(SPREADSHEET_ID)
+  throw new Error(
+    'This script is standalone, so SPREADSHEET_ID must be set to the id in your spreadsheet URL.',
+  )
 }
 
 function getSheet() {
