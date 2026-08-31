@@ -142,8 +142,11 @@ function describeTarget(sheet) {
     'Source     : ' + (SPREADSHEET_ID ? 'SPREADSHEET_ID' : 'bound spreadsheet'),
     'File       : ' + file.getName(),
     'File id    : ' + file.getId(),
-    'URL        : ' + file.getUrl(),
-    'Tab        : ' + sheet.getName(),
+    // #gid= targets the tab itself. Without it the link opens whichever sheet
+    // is first, which is not the one being written to — the rows look missing
+    // while sitting one tab away.
+    'URL        : ' + file.getUrl() + '#gid=' + sheet.getSheetId(),
+    'Tab        : ' + sheet.getName() + ' (gid ' + sheet.getSheetId() + ')',
     'Ratings    : ' + ratings,
   ].join('\n')
 }
