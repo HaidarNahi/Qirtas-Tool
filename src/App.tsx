@@ -8,12 +8,14 @@ import { downloadSheetPdf, sheetFileName } from './lib/pdf'
 import { stripHtml } from './lib/richtext'
 import { RATING_ENABLED } from './lib/config'
 import { flushRatingQueue } from './lib/rating'
+import { trackKeyboardInset } from './lib/keyboard'
 import Editor from './components/Editor'
 import PrivacySheet from './components/PrivacySheet'
 import RatingSheet from './components/RatingSheet'
 import SettingsPanel from './components/SettingsPanel'
 import Sheet from './components/Sheet'
 import Toolbar from './components/Toolbar'
+import { SpellcheckProvider } from './components/SpellcheckProvider'
 import {
   ConfirmDialog,
   Icons,
@@ -34,6 +36,7 @@ export default function App() {
   const [ratingOpen, setRatingOpen] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [rated, setRated] = useState(false)
+  const [spellcheck, setSpellcheck] = useState(true)
   const promptShown = useRef(false)
   const [toolbarVisible, setToolbarVisible] = useState(false)
   const [pageCount, setPageCount] = useState(1)
@@ -88,6 +91,7 @@ export default function App() {
       const prefs = loadPrefs()
       setCollapsed(new Set(prefs.collapsed))
       setRated(prefs.rated)
+      setSpellcheck(prefs.spellcheck)
       setReady(true)
       void requestPersistence()
       // Anything written while offline goes out now that we are running again.
@@ -141,8 +145,8 @@ export default function App() {
     if (!ready) return
     const live = new Set(doc.questions.map((question) => question.id))
     const prefs = loadPrefs()
-    savePrefs({ ...prefs, collapsed: [...collapsed].filter((id) => live.has(id)), rated })
-  }, [collapsed, ready, doc.questions, rated])
+    savePrefs({ ...prefs, collapsed: [...collapsed].filter((id) => live.has(id)), rated, spellcheck })
+  }, [collapsed, ready, doc.questions, rated, spellcheck])
 
   useEffect(() => {
     if (!RATING_ENABLED) return
@@ -150,6 +154,10 @@ export default function App() {
     window.addEventListener('online', onOnline)
     return () => window.removeEventListener('online', onOnline)
   }, [])
+
+  // Publishes how much of the screen the on-screen keyboard is covering, so the
+  // formatting toolbar can sit on top of it instead of behind it.
+  useEffect(() => trackKeyboardInset(), [])
 
   /* --------------------------------------------------------------- fit */
 
@@ -261,8 +269,17 @@ export default function App() {
     setTab('preview')
     setToolbarVisible(false)
     haptic(12)
-    // Give the preview a frame to lay out before we start rasterising.
-    await new Promise((resolve) => setTimeout(resolve, 180))
+    // Rasterising a half-laid-out page bakes the wrong line breaks into the
+    // PDF, so wait for the things that actually decide the layout: the fonts,
+    // and a frame in which the browser has done the work.
+    try {
+      await document.fonts?.ready
+    } catch {
+      /* the fallback stack still measures */
+    }
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    )
     const container = pagesRef.current
     const pages = container ? Array.from(container.querySelectorAll<HTMLElement>('.page')) : []
     if (pages.length === 0) {
@@ -348,6 +365,7 @@ export default function App() {
   const zoomIn = () => setZoom(Math.min(2, (zoom === 'fit' ? fitScale : zoom) + 0.15))
 
   return (
+    <SpellcheckProvider enabled={spellcheck}>
     <div className={`app ${toolbarVisible ? 'is-toolbar-open' : ''}`} dir="rtl" data-numerals={doc.numerals}>
       <header className="app-bar">
         <div className="brand">
@@ -461,6 +479,8 @@ export default function App() {
         doc={doc}
         setDoc={setDoc}
         storageWorks={saveState !== 'error'}
+        spellcheck={spellcheck}
+        onSpellcheck={setSpellcheck}
         onPrint={handlePrint}
         onNew={() =>
           setConfirm({
@@ -536,6 +556,7 @@ export default function App() {
         </div>
       )}
     </div>
+    </SpellcheckProvider>
   )
 }
 

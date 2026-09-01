@@ -614,13 +614,16 @@ button, label, select, input, [contenteditable], .seg-btn, .action, .toggle {
 .toolbar {
   position: fixed;
   inset-inline: 0;
-  bottom: 0;
+  /* The keyboard covers the bottom of the layout viewport without shrinking it,
+     so `bottom: 0` puts the toolbar underneath the keys. --kb-inset is how much
+     is covered; see src/lib/keyboard.ts. */
+  bottom: var(--kb-inset, 0px);
   z-index: 60;
   background: rgba(255,255,255,.97);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
   box-shadow: 0 -6px 24px rgba(19,30,24,.12);
-  padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+  padding: 7px 8px calc(7px + var(--kb-safe, env(safe-area-inset-bottom)));
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -628,7 +631,7 @@ button, label, select, input, [contenteditable], .seg-btn, .action, .toggle {
   transition: transform .22s cubic-bezier(.2,.9,.3,1);
 }
 .toolbar.is-visible { transform: translateY(0); }
-.app.is-toolbar-open .pane--edit { padding-bottom: calc(var(--toolbar-h, 150px) + 20px); }
+.app.is-toolbar-open .pane--edit { padding-bottom: calc(var(--toolbar-h, 150px) + var(--kb-inset, 0px) + 20px); }
 
 .tb-row { display: flex; align-items: center; gap: 3px; overflow-x: auto; scrollbar-width: none; }
 .tb-row::-webkit-scrollbar { display: none; }
@@ -1047,7 +1050,7 @@ button, label, select, input, [contenteditable], .seg-btn, .action, .toggle {
   padding: 0 14px;
   pointer-events: none;
 }
-.app.is-toolbar-open .toasts { bottom: calc(var(--toolbar-h, 150px) + 14px); }
+.app.is-toolbar-open .toasts { bottom: calc(var(--toolbar-h, 150px) + var(--kb-inset, 0px) + 14px); }
 .toast {
   pointer-events: auto;
   display: flex;
@@ -1212,6 +1215,138 @@ button, label, select, input, [contenteditable], .seg-btn, .action, .toggle {
 .q-divider { border: 0; border-top: 1px solid currentColor; margin: 0; }
 .q-divider--dashed { border-top-style: dashed; }
 
+
+/* ================================================== symbol library panel */
+.tb-panel--symbols {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  overflow: visible;
+}
+.tb-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tb-tabs::-webkit-scrollbar { display: none; }
+.tb-chip.is-active { background: var(--brand-600); border-color: var(--brand-600); color: #fff; }
+.tb-symbols {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  gap: 5px;
+  /* Four rows, then it scrolls — the panel must not swallow the sheet. */
+  max-height: 168px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.tb-sym {
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  /* The symbols are not Arabic, and the UI face renders some of them poorly. */
+  font-family: 'Inter', system-ui, sans-serif;
+  /* Bidi mirrors these inside an RTL interface: < renders as >, ⊂ as ⊃, → as ←.
+     The button would then advertise the opposite of the character it inserts,
+     so each one is its own LTR run. What the field does with the character
+     afterwards is the document's business, and correct. */
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .09s, background .12s;
+}
+.tb-sym:active { transform: scale(.88); background: var(--brand-100); }
+
+/* ============================================ spelling & obscenity marks */
+.rt-wrap { position: relative; min-width: 0; }
+/* The field it wraps was the flex child; the wrapper has to take that over. */
+.rt-wrap--marks { flex: 1; min-width: 130px; }
+
+.rt-marks { position: absolute; inset: 0; pointer-events: none; }
+
+/* Drawn as a repeating background so the squiggle hugs the baseline rather
+   than the line box, which is taller than the glyphs at any line spacing. */
+.rt-underline {
+  position: absolute;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3' viewBox='0 0 6 3'%3E%3Cpath d='M0 2.3 1.5 .9 3 2.3 4.5 .9 6 2.3' fill='none' stroke='%23DC2626' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-position: left bottom 1px;
+  background-size: 6px 3px;
+}
+
+/* Obscenities are covered, never deleted: the sheet keeps what was typed. */
+.rt-blur {
+  position: absolute;
+  pointer-events: auto;
+  border: 0;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  background: rgba(87, 83, 78, .34);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  /* Spread slightly past the glyphs so no letter peeks out at the edge. */
+  box-shadow: 0 0 0 2px rgba(87, 83, 78, .34);
+}
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  .rt-blur { background: #57534E; box-shadow: 0 0 0 2px #57534E; }
+}
+/* Once uncovered the patch stops intercepting taps, so the word underneath can
+   be selected and edited like any other. */
+.rt-flagged {
+  position: absolute;
+  pointer-events: none;
+  border-bottom: 2px dotted #D08A00;
+}
+
+.rt-suggest {
+  position: absolute;
+  z-index: 6;
+  transform: translateY(-100%);
+  margin-top: -7px;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand-700);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: var(--shadow-pop);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.rt-suggest::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: 13px;
+  width: 8px;
+  height: 8px;
+  background: var(--brand-700);
+  transform: rotate(45deg);
+  border-radius: 1.5px;
+}
+.rt-suggest:active { transform: translateY(-100%) scale(.95); }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* =========================================================== pointers */
 @media (hover: hover) and (pointer: fine) {
   .btn--primary:hover { background: var(--brand-800); }
@@ -1275,7 +1410,8 @@ button, label, select, input, [contenteditable], .seg-btn, .action, .toggle {
   html, body, #root, .app { background: #fff !important; height: auto !important; display: block !important; }
 
   .app-bar, .tabs, .toolbar, .panel, .scrim, .dialog, .toasts,
-  .pane--edit, .preview-bar, .sheet-measure { display: none !important; }
+  .pane--edit, .preview-bar, .sheet-measure,
+  .rt-marks, .rt-suggest { display: none !important; }
 
   .panes { display: block !important; position: static !important; }
   .pane--preview {

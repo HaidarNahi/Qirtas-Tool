@@ -101,10 +101,24 @@ function readLocal(key: string): Snapshot | null {
   }
 }
 
+/**
+ * The backup is refreshed on a timer rather than on every save. Copying it each
+ * time meant reading and re-writing the whole sheet twice per keystroke-pause,
+ * synchronously, on the main thread — on the cheap Android phones this is built
+ * for that is a stutter while typing, and a backup a minute old is just as good
+ * at its actual job.
+ */
+const BACKUP_INTERVAL_MS = 60000
+let lastBackupAt = 0
+
 function writeLocal(snapshot: Snapshot): boolean {
   try {
-    const previous = localStorage.getItem(KEY)
-    if (previous) localStorage.setItem(BACKUP_KEY, previous)
+    const now = Date.now()
+    if (now - lastBackupAt > BACKUP_INTERVAL_MS) {
+      const previous = localStorage.getItem(KEY)
+      if (previous) localStorage.setItem(BACKUP_KEY, previous)
+      lastBackupAt = now
+    }
     localStorage.setItem(KEY, JSON.stringify(snapshot))
     return true
   } catch {
@@ -134,6 +148,17 @@ export async function loadLatest(): Promise<{ snapshot: Snapshot; recovered: boo
   for (const legacy of LEGACY_KEYS) {
     const found = readLocal(legacy)
     if (found) candidates.push({ snapshot: found, recovered: false })
+  }
+  // Whatever they held has been read into the running document by now; leaving
+  // them behind means re-reading them on every launch forever.
+  if (local) {
+    for (const legacy of LEGACY_KEYS) {
+      try {
+        localStorage.removeItem(legacy)
+      } catch {
+        /* nothing useful to do */
+      }
+    }
   }
 
   try {
@@ -170,9 +195,17 @@ export interface Prefs {
   downloads: number
   rated: boolean
   ratePromptDismissed: boolean
+  /** Spelling check. A device setting, not part of the sheet, so it lives here. */
+  spellcheck: boolean
 }
 
-const defaultPrefs: Prefs = { collapsed: [], downloads: 0, rated: false, ratePromptDismissed: false }
+const defaultPrefs: Prefs = {
+  collapsed: [],
+  downloads: 0,
+  rated: false,
+  ratePromptDismissed: false,
+  spellcheck: true,
+}
 
 export function loadPrefs(): Prefs {
   try {

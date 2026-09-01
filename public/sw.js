@@ -1,9 +1,18 @@
 /* Offline shell for قِرطاس. Teachers open this on flaky mobile data; once the
    app has loaded a first time it must keep working with no network at all. */
-const CACHE = 'qirtas-v1'
+
+/* The build id rides in on the registration URL (`sw.js?v=…`), so every deploy
+   is a different script to the browser and gets its own cache. Without it the
+   cache name never changed, the activate-time purge below never fired, and
+   every past deploy's chunks and fonts stayed on the device forever. */
+const BUILD = new URL(self.location.href).searchParams.get('v') || 'dev'
+const CACHE = `qirtas-${BUILD}`
 const SHELL = new URL('./index.html', self.registration.scope).toString()
 
-self.addEventListener('install', () => self.skipWaiting())
+/* Deliberately no skipWaiting(). A page that is already open keeps the hashed
+   chunk URLs it was served with, and the PDF exporter loads two of them lazily
+   — swapping the worker out underneath it turns "download" into a 404. The new
+   worker takes over once the last old tab is gone. */
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
