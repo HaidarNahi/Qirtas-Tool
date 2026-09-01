@@ -191,14 +191,22 @@ export default function RichText({
     const el = ref.current
     if (!el || !mark.suggestion) return
     const map = readTextMap(el)
-    // The offsets were measured against an earlier reading of the field. Only
-    // replace when they still point at the word the suggestion was for.
-    if (map.text.slice(mark.from, mark.to).toLowerCase() !== mark.word.toLowerCase()) return
+    const found = map.text.slice(mark.from, mark.to)
+    // The offsets were measured against an earlier reading of the field, so
+    // check they still point at the word before touching anything.
+    //
+    // The span can be wider than the word: findWord deliberately widens a bare
+    // checker result like "الرابطه" to cover "والرابطه", so the match carries a
+    // clitic the suggestion does not. Comparing the whole span against the word
+    // rejected exactly the matches that widening exists to support — the prefix
+    // is kept and the corrected word put after it.
+    if (!found.toLowerCase().endsWith(mark.word.toLowerCase())) return
+    const prefix = found.slice(0, found.length - mark.word.length)
 
     const range = rangeAt(map, mark.from, mark.to)
     if (!range) return
     range.deleteContents()
-    const replacement = document.createTextNode(mark.suggestion)
+    const replacement = document.createTextNode(prefix + mark.suggestion)
     range.insertNode(replacement)
 
     const selection = window.getSelection()

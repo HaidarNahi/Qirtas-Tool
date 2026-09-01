@@ -320,6 +320,14 @@ async function sweep(): Promise<void> {
   inFlight.set(combined, request)
   await request
   broadcast()
+
+  // A sheet longer than one batch leaves fields unasked. Without this they wait
+  // for an edit that may never come — the teacher stops typing and the rest of
+  // the paper is simply never checked.
+  if (batch.length < unseen.length) {
+    clearTimeout(timer)
+    timer = setTimeout(() => void sweep(), DEBOUNCE_MS)
+  }
 }
 
 /** Lets the settings panel say why the row is disabled. */

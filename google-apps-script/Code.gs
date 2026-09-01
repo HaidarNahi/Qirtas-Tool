@@ -200,31 +200,40 @@ function getSheet() {
 }
 
 /**
- * Duplicates only ever arrive from the app's own retry path — an offline queue
- * flushing, or a no-cors send that could not be confirmed — so they land within
- * minutes of the original. A short-lived cache of ids answers that case
- * immediately; the column scan behind it is the cold-start fallback and is
- * capped, because reading 50,000 rows on every POST while holding the script
- * lock is how this ends up timing out.
+ * The app retries a rating whose delivery it could not confirm — a queued send
+ * after being offline, or a no-cors attempt that may well have landed — so the
+ * same id legitimately arrives twice and must not become two rows.
+ *
+ * The cache answers the common case, which is a retry minutes later, without
+ * touching the sheet at all. Behind it the lookup covers the WHOLE column,
+ * because a retry can also arrive days later: a window of recent rows would
+ * miss the original and write the duplicate this exists to prevent.
+ *
+ * It is a TextFinder rather than getValues() so that "whole column" does not
+ * mean pulling fifty thousand cells into memory on every POST while holding the
+ * script lock. The search runs on the server and returns a single hit.
  */
-var RECENT_SCAN_ROWS = 400
 var SEEN_TTL_SECONDS = 21600 // 6 hours
 
 function idExists(sheet, id) {
+  if (!id) return false
+
   var cache = CacheService.getScriptCache()
-  var key = 'seen-' + id
-  if (cache.get(key)) return true
+  if (cache.get('seen-' + id)) return true
 
   var lastRow = sheet.getLastRow()
   if (lastRow < 2) return false
 
   var column = HEADERS.indexOf('المعرّف') + 1
-  var first = Math.max(2, lastRow - RECENT_SCAN_ROWS + 1)
-  var values = sheet.getRange(first, column, lastRow - first + 1, 1).getValues()
-  for (var i = 0; i < values.length; i++) {
-    if (String(values[i][0]) === id) return true
-  }
-  return false
+  var hit = sheet
+    .getRange(2, column, lastRow - 1, 1)
+    .createTextFinder(id)
+    .matchEntireCell(true)
+    .matchCase(true)
+    .findNext()
+
+  if (hit) rememberId(id)
+  return hit !== null
 }
 
 /** Remembers an id so its retry is recognised without touching the sheet. */
