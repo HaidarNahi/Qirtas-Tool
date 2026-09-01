@@ -460,6 +460,7 @@ function MarksField({
           html={value}
           placeholder={t('marksPlaceholder')}
           className="field field--marks"
+          wrapClassName="rt-wrap--marks"
           onChange={onChange}
         />
       )}

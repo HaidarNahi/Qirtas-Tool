@@ -18,7 +18,7 @@ createRoot(document.getElementById('root')!).render(
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register(new URL('sw.js', document.baseURI).toString()).catch(() => {
+    navigator.serviceWorker.register(`${new URL('sw.js', document.baseURI)}?v=${__BUILD_ID__}`).catch(() => {
       /* offline support is a bonus, never a blocker */
     })
   })

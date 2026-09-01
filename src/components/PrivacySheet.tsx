@@ -6,6 +6,7 @@ const POINTS = [
   { title: 'privacyPoint2Title', body: 'privacyPoint2Body' },
   { title: 'privacyPoint3Title', body: 'privacyPoint3Body' },
   { title: 'privacyPoint4Title', body: 'privacyPoint4Body' },
+  { title: 'privacyPoint6Title', body: 'privacyPoint6Body' },
   { title: 'privacyPoint5Title', body: 'privacyPoint5Body' },
 ] as const
 

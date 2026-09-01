@@ -34,10 +34,17 @@ export default function RatingSheet({
     if (score < 1 || state === 'sending') return
     setState('sending')
     haptic(12)
-    const result = await submitRating(buildRating(score, comment))
-    setState(result === 'sent' ? 'sent' : 'queued')
-    onRated()
-    haptic([10, 40, 10])
+    try {
+      const result = await submitRating(buildRating(score, comment))
+      setState(result === 'sent' ? 'sent' : 'queued')
+      onRated()
+      haptic([10, 40, 10])
+    } catch {
+      // submitRating swallows network failures into the queue, so this is the
+      // unexpected kind — leave the form up rather than thanking them for
+      // something that did not happen.
+      setState('failed')
+    }
   }
 
   const done = state === 'sent' || state === 'queued'

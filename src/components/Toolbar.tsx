@@ -9,10 +9,12 @@ import {
   currentStyleValue,
   exec,
   explicitFontSizePt,
+  insertText,
   queryState,
   saveSelection,
   withSelection,
 } from '../lib/richtext'
+import { SYMBOL_GROUPS } from '../lib/symbols'
 
 const COLORS = ['#000000', '#3F3F46', '#B91C1C', '#1D4ED8', '#2B6640', '#B45309', '#6D28D9']
 const SPACINGS = [1, 1.15, 1.3, 1.5, 1.8, 2, 2.5]
@@ -25,7 +27,8 @@ interface Props {
 
 export default function Toolbar({ visible, defaultSize }: Props) {
   const [, force] = useState(0)
-  const [panel, setPanel] = useState<'color' | 'spacing' | null>(null)
+  const [panel, setPanel] = useState<'color' | 'spacing' | 'symbols' | null>(null)
+  const [group, setGroup] = useState(SYMBOL_GROUPS[0].id)
   const rootRef = useRef<HTMLDivElement>(null)
 
   // The toolbar grows when a popover opens; the editor needs to know by how
@@ -135,6 +138,40 @@ export default function Toolbar({ visible, defaultSize }: Props) {
         </div>
       )}
 
+      {panel === 'symbols' && (
+        <div className="tb-panel tb-panel--symbols" data-toolbar="true">
+          <div className="tb-tabs" role="tablist" aria-label={t('symbols')}>
+            {SYMBOL_GROUPS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={group === item.id}
+                className={`tb-chip ${group === item.id ? 'is-active' : ''}`}
+                onPointerDown={hold}
+                onClick={() => setGroup(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="tb-symbols">
+            {(SYMBOL_GROUPS.find((item) => item.id === group) ?? SYMBOL_GROUPS[0]).symbols.map((symbol) => (
+              <button
+                key={symbol}
+                type="button"
+                className="tb-sym"
+                aria-label={symbol}
+                onPointerDown={hold}
+                onClick={run(() => insertText(symbol))}
+              >
+                {symbol}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="tb-row tb-row--main">
         {cmd('bold', t('bold'), <strong>B</strong>, queryState('bold'))}
         {cmd('italic', t('italic'), <em>I</em>, queryState('italic'))}
@@ -159,6 +196,19 @@ export default function Toolbar({ visible, defaultSize }: Props) {
       </div>
 
       <div className="tb-row tb-row--secondary">
+        {/* First in the row, so RTL puts it under the thumb rather than off the
+            left edge — this row overflows and scrolls on a 375px phone. */}
+        <button
+          type="button"
+          className={`tb-btn tb-btn--wide ${panel === 'symbols' ? 'is-active' : ''}`}
+          title={t('symbols')}
+          aria-label={t('symbols')}
+          onPointerDown={hold}
+          onClick={() => setPanel(panel === 'symbols' ? null : 'symbols')}
+        >
+          <IconSymbols />
+        </button>
+
         <select
           className="tb-select"
           value={currentFont()}
@@ -277,6 +327,18 @@ function IconColor() {
       <path d="M5 13 9.6 3.5h.8L15 13" {...stroke} />
       <path d="M6.6 10h6.8" {...stroke} />
       <rect x="3" y="15" width="14" height="3" rx="1.2" fill="currentColor" />
+    </svg>
+  )
+}
+
+function IconSymbols() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden>
+      <text x="10" y="14" fontSize="13" textAnchor="middle" fill="currentColor" fontWeight="600">
+        π
+      </text>
+      <path d="M2.5 3.2h4M4.5 1.2v4" {...stroke} strokeWidth={1.4} />
+      <path d="M13.6 17h4M15.6 15v4" {...stroke} strokeWidth={1.4} />
     </svg>
   )
 }

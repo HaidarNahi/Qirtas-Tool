@@ -1,7 +1,18 @@
-import type { Branch, Doc, Question } from './types'
+import type { Align, Branch, BranchStyle, Dir, DividerStyle, Doc, FontKey, Html, NumeralStyle, PagePadding, Question } from './types'
 import { sanitizeHtml } from './richtext'
 
 export const uid = () => Math.random().toString(36).slice(2, 10)
+
+const DIRS: readonly Dir[] = ['rtl', 'ltr']
+const FONTS: readonly FontKey[] = ['inter', 'arial', 'ibmArabic', 'times']
+const NUMERALS: readonly NumeralStyle[] = ['arabic', 'latin']
+const BRANCH_STYLES: readonly BranchStyle[] = ['abjad', 'latin']
+const DIVIDERS: readonly DividerStyle[] = ['solid', 'dashed', 'none']
+const ALIGNS: readonly Align[] = ['start', 'center', 'end']
+
+/** Ceilings, not policy: they stop a malformed file from wedging the app. */
+const MAX_QUESTIONS = 500
+const MAX_BRANCHES = 100
 
 const ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩']
 
@@ -113,44 +124,117 @@ export function sampleDoc(): Doc {
   }
 }
 
+/* ------------------------------------------------------- import hardening */
+
+const MAX_PADDING_MM = 40
+const MIN_FONT_PT = 6
+const MAX_FONT_PT = 72
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback
+}
+
+function number(value: unknown, min: number, max: number, fallback: number): number {
+  // A missing value takes the default; only a real number gets clamped. Without
+  // the guard `Number(null)` is 0, so an absent margin would silently become
+  // zero rather than the margin the sheet was designed with.
+  if (value === null || value === undefined || value === '') return fallback
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(max, Math.max(min, parsed))
+}
+
+/** Anything CSS will accept as a colour, but nothing that can carry a payload. */
+function color(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback
+  const trimmed = value.trim()
+  return /^(#[0-9a-f]{3,8}|[a-z]+|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%/]+\))$/i.test(trimmed)
+    ? trimmed
+    : fallback
+}
+
+function boolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback
+}
+
 /**
  * Fills in fields added after a document was first saved, and re-sanitises every
  * rich-text field. Documents arrive from `Open a saved sheet`, which is a file
  * the app did not write — and every one of these fields ends up in
  * dangerouslySetInnerHTML.
+ *
+ * The numbers and enums get the same treatment as the HTML, and for the same
+ * reason: this is the trust boundary. A file carrying `padding: { top: 5000 }`
+ * or a 10⁶pt font renders a sheet with nothing on it, and autosave writes that
+ * straight over the teacher's own work before they can undo it.
  */
 export function migrate(doc: Doc): Doc {
   const base = createDoc()
   const clean = (html: unknown): string => (typeof html === 'string' ? sanitizeHtml(html) : '')
+  const align = (value: unknown, fallback: Align): Align => oneOf(value, ALIGNS, fallback)
+
+  const padding = (doc?.padding ?? {}) as Partial<PagePadding>
 
   return {
     ...base,
     ...doc,
-    padding: { ...base.padding, ...doc.padding },
+    version: 1,
+    dir: oneOf(doc?.dir, DIRS, base.dir),
+    font: oneOf(doc?.font, FONTS, base.font),
+    numerals: oneOf(doc?.numerals, NUMERALS, base.numerals),
+    branchStyle: oneOf(doc?.branchStyle, BRANCH_STYLES, base.branchStyle),
+    fontSize: number(doc?.fontSize, MIN_FONT_PT, MAX_FONT_PT, base.fontSize),
+    lineHeight: number(doc?.lineHeight, 0.5, 4, base.lineHeight),
+    color: color(doc?.color, base.color),
+    questionPrefix: typeof doc?.questionPrefix === 'string' ? doc.questionPrefix.slice(0, 6) : base.questionPrefix,
+    showPageNumbers: boolean(doc?.showPageNumbers, base.showPageNumbers),
+    padding: {
+      top: number(padding.top, 0, MAX_PADDING_MM, base.padding.top),
+      right: number(padding.right, 0, MAX_PADDING_MM, base.padding.right),
+      bottom: number(padding.bottom, 0, MAX_PADDING_MM, base.padding.bottom),
+      left: number(padding.left, 0, MAX_PADDING_MM, base.padding.left),
+    },
     header: {
       ...base.header,
       ...doc.header,
-      cells: (doc.header?.cells ?? base.header.cells).slice(0, 3).map(clean) as [string, string, string],
+      cells: fixed(doc.header?.cells, 3, base.header.cells).map(clean) as [Html, Html, Html],
       note: clean(doc.header?.note),
-      align: (doc.header?.align ?? base.header.align).slice(0, 3) as Doc['header']['align'],
+      noteAlign: align(doc.header?.noteAlign, base.header.noteAlign),
+      align: fixed(doc.header?.align, 3, base.header.align).map((a) => align(a, 'start')) as Doc['header']['align'],
+      showNote: boolean(doc.header?.showNote, base.header.showNote),
+      showRule: boolean(doc.header?.showRule, base.header.showRule),
+      repeat: boolean(doc.header?.repeat, base.header.repeat),
     },
     footer: {
       ...base.footer,
       ...doc.footer,
-      cells: (doc.footer?.cells ?? base.footer.cells).slice(0, 2).map(clean) as [string, string],
-      align: (doc.footer?.align ?? base.footer.align).slice(0, 2) as Doc['footer']['align'],
+      cells: fixed(doc.footer?.cells, 2, base.footer.cells).map(clean) as [Html, Html],
+      align: fixed(doc.footer?.align, 2, base.footer.align).map((a) => align(a, 'start')) as Doc['footer']['align'],
+      showRule: boolean(doc.footer?.showRule, base.footer.showRule),
+      repeat: boolean(doc.footer?.repeat, base.footer.repeat),
     },
-    questions: (doc.questions ?? []).map((q) => ({
+    questions: (Array.isArray(doc?.questions) ? doc.questions : []).slice(0, MAX_QUESTIONS).map((q) => ({
       ...emptyQuestion(),
       ...q,
+      id: typeof q?.id === 'string' && q.id ? q.id : uid(),
       text: clean(q?.text),
       marks: clean(q?.marks),
-      branches: (q?.branches ?? []).map((b) => ({
+      showMarks: boolean(q?.showMarks, true),
+      divider: oneOf(q?.divider, DIVIDERS, 'solid'),
+      branches: (Array.isArray(q?.branches) ? q.branches : []).slice(0, MAX_BRANCHES).map((b) => ({
         ...emptyBranch(),
         ...b,
+        id: typeof b?.id === 'string' && b.id ? b.id : uid(),
         text: clean(b?.text),
         marks: clean(b?.marks),
+        showMarks: boolean(b?.showMarks, true),
       })),
     })),
   }
+}
+
+/** Keeps a tuple field exactly the length the model promises. */
+function fixed<T>(value: unknown, length: number, fallback: readonly T[]): T[] {
+  const source = Array.isArray(value) ? value : fallback
+  return Array.from({ length }, (_, i) => (source[i] ?? fallback[i]) as T)
 }

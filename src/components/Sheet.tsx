@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Doc, Question } from '../lib/types'
+import type { Doc } from '../lib/types'
 import { FONT_STACKS } from '../lib/types'
 import { branchLabel, formatNumber } from '../lib/doc'
 import { isBlank } from '../lib/richtext'
@@ -176,7 +176,7 @@ function FlowRow({ doc, item, overflowing }: { doc: Doc; item: FlowItem; overflo
 
   return (
     <div className={`flow-item q-row ${overflowing ? 'is-overflowing' : ''}`} data-flow-id={item.id}>
-      <div className="q-label">{rowLabel(doc, question, item.questionIndex, item.branchIndex)}</div>
+      <div className="q-label">{rowLabel(doc, item.questionIndex, item.branchIndex)}</div>
       <div className="q-text" dangerouslySetInnerHTML={{ __html: source.text }} />
       <div className="q-marks">
         {source.showMarks && !isBlank(source.marks) ? (
@@ -187,7 +187,7 @@ function FlowRow({ doc, item, overflowing }: { doc: Doc; item: FlowItem; overflo
   )
 }
 
-export function rowLabel(doc: Doc, _question: Question, questionIndex: number, branchIndex: number | null): string {
+export function rowLabel(doc: Doc, questionIndex: number, branchIndex: number | null): string {
   const number = formatNumber(questionIndex + 1, doc.numerals)
   const base = `${doc.questionPrefix}${number}`
   if (branchIndex === null) return `${base}/`

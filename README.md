@@ -7,14 +7,21 @@ without Word or Google Docs. Arabic interface, RTL by default, built mobile-firs
 
 *Qirtas* (قِرطاس) is the classical Arabic word for a sheet of paper.
 
-Nothing a teacher types leaves their device — see [Privacy](#privacy).
+Everything works offline and nothing is stored on a server. One optional
+feature — the spelling check — sends the field being typed to Groq; it is the
+only thing that leaves the device, and it can be switched off. See
+[Privacy](#privacy).
 
 ## Running it
 
 ```bash
 npm install
+cp .env.example .env   # then paste your Groq key in, for the spelling check
 npm run dev
 ```
+
+`.env` is gitignored. Without it the app runs fine and the spelling check
+switches itself off, saying so in the settings panel.
 
 Build a deployable copy into `dist/`:
 
@@ -40,6 +47,10 @@ Point the provider at this repo and use:
 
 - Build command: `npm run build`
 - Publish directory: `dist`
+
+Set `VITE_GROQ_API_KEY` as an environment variable in the provider's dashboard,
+or the deployed build ships without the spelling check — `.env` is not in the
+repo, so the build has no other way to see it.
 
 Then add `qirtas.asasthaki.dev` as a custom domain in the provider's dashboard
 and follow its DNS instructions.
@@ -125,6 +136,10 @@ subscript, superscript, numbered list, bulleted list, text colour, text size,
 line spacing, and four fonts — Inter, Arial, IBM Plex Sans Arabic, and
 Times New Roman. Nothing more, by design.
 
+The **π** button opens a symbol library — maths, chemistry, physics and arrows,
+including the subscript and superscript digits that make `H₂SO₄` and `Ca²⁺` one
+tap each instead of four. Tapping a symbol inserts it at the caret.
+
 Defaults for the whole sheet (font, size, line spacing, colour, sheet
 direction, numerals, branch labels, page margins) live in **الإعدادات**.
 
@@ -143,6 +158,49 @@ dialog, since no client-side PDF library shapes Arabic correctly.
 
 If a teacher does want selectable, searchable text, **الإعدادات → الطباعة بدل
 التحميل** still offers the print route, which produces vector text.
+
+## Spelling check (optional, on by default)
+
+Arabic and English, through Groq. A word that looks misspelled gets a red wavy
+underline; put the caret in it and the suggested spelling appears above it —
+tap to accept. Obscene words are covered by a blur patch rather than deleted,
+and a tap uncovers one for the rest of the session. The teacher's text is never
+rewritten without a tap, and the blur is an editor-only affordance: the sheet
+and the PDF always contain exactly what was typed.
+
+Switch it off in **الإعدادات → التدقيق الإملائي**. Off means no requests at all.
+
+### Setting it up
+
+Put a Groq key in `.env` as `VITE_GROQ_API_KEY`. `VITE_GROQ_MODEL` overrides the
+model, which defaults to `openai/gpt-oss-20b`.
+
+**The key is public once you deploy.** Vite inlines env vars into the bundle at
+build time, so anyone who opens devtools on the site can read it — `.env` keeps
+it out of git and does nothing else. If that matters, put a small proxy in front
+of Groq that holds the key server-side, and point `GROQ_ENDPOINT` at it.
+
+### Why it is built the way it is
+
+- **The model was chosen by measurement.** `openai/gpt-oss-20b` caught every
+  planted error in a mixed Arabic/English paper, flagged nothing in a correctly
+  written one, and answers in about 700 ms. Qwen was faster and missed all of
+  the Arabic.
+- **A false positive is worse than a miss.** A teacher who sees red under
+  correctly written Arabic turns the feature off and never turns it back on, so
+  the prompt refuses to guess and lists what it must never report — proper
+  nouns, formulas, units, grammar, and absent tashkeel, which is normal writing
+  and not an error. What it *is* told to report is the Arabic that actually goes
+  wrong: hamza (`الايون` → `الأيون`), ة written as ه (`الرابطه` → `الرابطة`),
+  and ى/ي at the end of a word.
+- **Marks are an overlay, not markup.** Wrapping words in `<span>` would put the
+  checker's opinion into the teacher's saved document, fight the caret on every
+  keystroke, and be stripped by the sanitiser on the next load anyway. The
+  underlines and blur patches are absolutely positioned boxes measured from
+  `Range.getClientRects()`.
+- **Failure is quiet.** No key, no network, a timeout, a 429 — all of them fall
+  back to the local obscenity list, and a failure starts a cooldown so the app
+  does not hammer a dead endpoint. Nothing ever blocks typing.
 
 ## Not losing work
 
@@ -169,19 +227,34 @@ confirmation dialog gets in the way. Replacing the whole sheet does ask first.
 
 ## Privacy
 
-Everything a teacher types stays on their device. There is no account, no
-login, and no server that receives sheet content — the PDF is built in the
-browser, which is why it works with the network off. The app ships a privacy
-page (**الإعدادات → الخصوصية**) that says this in plain Arabic.
+There is no account, no login, and no server that stores sheet content. The
+sheet is saved on the device and the PDF is built in the browser, which is why
+both work with the network off.
 
-The only thing that ever leaves the device is a rating, and only if the teacher
-chooses to send one.
+Two things can leave the device, and the privacy page
+(**الإعدادات → الخصوصية**) names both in plain Arabic:
+
+1. **The spelling check**, when it is on — which it is by default. It sends the
+   text of the field being edited to Groq and nothing else: not the whole sheet,
+   not the teacher's name, not the school, and no identifier tying one field to
+   another. Turning it off stops all of it.
+2. **A rating**, and only if the teacher chooses to send one.
+
+If you would rather ship with the check off by default, change `spellcheck` in
+`defaultPrefs` in [`src/lib/storage.ts`](src/lib/storage.ts). If you would
+rather it did not exist, leave `VITE_GROQ_API_KEY` unset and the feature never
+appears.
 
 ## Ratings (optional)
 
 Ratings go to a Google Sheet you own, through a Google Apps Script web app.
 **The feature stays completely hidden until you configure it** — nothing is
 sent, and no rating entry appears in the settings.
+
+**`src/lib/config.ts` and `Code.gs` currently hold the live endpoint and
+spreadsheet id for qirtas.asasthaki.dev.** A clone that is run as-is posts its
+ratings into that sheet. Replace both, or set `VITE_RATING_ENDPOINT` in `.env`,
+which wins over the value in the source.
 
 To turn it on, follow [`google-apps-script/README-SETUP.md`](google-apps-script/README-SETUP.md):
 create a sheet, paste in [`google-apps-script/Code.gs`](google-apps-script/Code.gs),
@@ -223,12 +296,18 @@ full-screen with no browser chrome and works offline.
 | `src/lib/richtext.ts` | Formatting commands, sanitising, selection handling |
 | `src/lib/pdf.ts` | Direct PDF export |
 | `src/lib/i18n.ts` | Arabic string table |
-| `src/lib/config.ts` | Where the rating endpoint URL goes |
+| `src/lib/config.ts` | Rating endpoint, Groq key and model |
 | `src/lib/rating.ts` | Rating submission, offline queue, retry |
+| `src/lib/spellcheck.ts` | Groq client, prompt, cache, cooldown |
+| `src/lib/profanity.ts` | Offline obscenity list |
+| `src/lib/textmap.ts` | Field text ⇄ DOM offsets, whole-word search |
+| `src/lib/symbols.ts` | The symbol library |
+| `src/lib/keyboard.ts` | Where the on-screen keyboard is |
 | `google-apps-script/Code.gs` | The Sheets receiver |
 | `src/components/Sheet.tsx` | Measures content, renders the paginated A4 pages |
 | `src/components/Editor.tsx` | Header / questions / footer editing |
-| `src/components/Toolbar.tsx` | The formatting toolbar |
+| `src/components/Toolbar.tsx` | The formatting toolbar and symbol library |
+| `src/components/RichText.tsx` | One editable field, and its spelling overlay |
 | `src/components/SettingsPanel.tsx` | Sheet-wide settings |
 | `public/sw.js` | Offline shell |
 
@@ -253,6 +332,31 @@ in `dangerouslySetInnerHTML`. `migrate()` re-sanitises all of them. Inside
 rather than a snapshot: unwrapping a disallowed element promotes its children
 into the list, and those children have to be checked too — otherwise
 `<svg onload=…><circle/></svg>` would leak the inner element.
+
+**Whole-field formatting has to go inside the field.** With nothing selected,
+the toolbar styles the whole field — and the only place that can live is inside
+the field's own markup. `editor.style` is on the host element, which is never
+part of `innerHTML`, so a style set there shows in the editor, never saves,
+never reaches the PDF, and vanishes on reload. `styleWholeField` in
+`src/lib/richtext.ts` wraps the contents instead, re-using the wrapper it made
+last time so repeated taps do not nest.
+
+**`Range.getClientRects()` returns one rect per character here.** Bidi text in a
+contenteditable splits into that many runs, so the spelling overlay merges rects
+back into one box per line before drawing. Without it every letter gets its own
+underline segment.
+
+**Symbols are LTR islands.** In an RTL interface the bidi algorithm mirrors `<`
+to `>`, `⊂` to `⊃` and `→` to `←`, so a symbol button would advertise the
+opposite of the character it inserts. `.tb-sym` is `direction: ltr;
+unicode-bidi: isolate`. What the *field* does with the character afterwards is
+the document's business and is correct as-is.
+
+**The keyboard does not shrink the layout viewport.** `position: fixed;
+bottom: 0` therefore puts the toolbar behind the keys on a phone. `--kb-inset`
+(from `src/lib/keyboard.ts`) is the gap between the layout and visual viewports
+— that is, what the keyboard covers — and everything pinned to the bottom sits
+on top of it.
 
 **Font embedding is deliberately narrow.** The SVG is its own document and
 cannot reach the app's webfonts, so they are inlined — but only the families and

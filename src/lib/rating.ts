@@ -159,19 +159,28 @@ export async function submitRating(rating: Rating): Promise<SendResult> {
   return 'queued'
 }
 
-/** Retries anything that was written while the device was offline. */
+/**
+ * Retries anything that was written while the device was offline.
+ *
+ * Launch and the `online` event can both call this, and two runs racing on
+ * `writeQueue(remaining)` would resurrect an item the other had just sent.
+ */
+let flushing = false
+
 export async function flushRatingQueue(): Promise<void> {
+  if (flushing) return
   const queue = readQueue()
   if (queue.length === 0 || !RATING_ENDPOINT) return
 
-  const remaining: Rating[] = []
-  for (const item of queue) {
-    const ok = await post(item)
-    if (!ok) remaining.push(item)
+  flushing = true
+  try {
+    const remaining: Rating[] = []
+    for (const item of queue) {
+      const ok = await post(item)
+      if (!ok) remaining.push(item)
+    }
+    writeQueue(remaining)
+  } finally {
+    flushing = false
   }
-  writeQueue(remaining)
-}
-
-export function hasQueuedRatings(): boolean {
-  return readQueue().length > 0
 }

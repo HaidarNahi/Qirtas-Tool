@@ -133,18 +133,61 @@ export function queryState(command: string): boolean {
 }
 
 /**
+ * Nothing selected: style the whole field.
+ *
+ * The value has to land *inside* the field's own markup. `editor.style` lives
+ * on the host element, which is never part of `innerHTML` — so a style set
+ * there shows up in the editor, is never saved, never reaches the sheet or the
+ * PDF, and disappears on the next reload.
+ */
+function styleWholeField(editor: HTMLElement, property: string, value: string, block: boolean) {
+  const tag = block ? 'DIV' : 'SPAN'
+  const onlyChild = editor.childNodes.length === 1 ? editor.firstChild : null
+
+  if (onlyChild instanceof HTMLElement && onlyChild.tagName === tag) {
+    // Re-use the shell an earlier whole-field style left behind: nothing moves,
+    // so the caret never has to be rebuilt and the wrappers cannot stack up.
+    onlyChild.style.setProperty(property, value)
+    onlyChild.querySelectorAll<HTMLElement>('[style]').forEach((el) => el.style.removeProperty(property))
+    editor.style.removeProperty(property)
+    return
+  }
+
+  // A marker holds the caret's place across the re-wrap.
+  const caret = document.createElement('span')
+  const range = currentRange()
+  if (range && editor.contains(range.startContainer)) range.insertNode(caret)
+  else editor.appendChild(caret)
+
+  const wrapper = document.createElement(block ? 'div' : 'span')
+  wrapper.style.setProperty(property, value)
+  while (editor.firstChild) wrapper.appendChild(editor.firstChild)
+  wrapper.querySelectorAll<HTMLElement>('[style]').forEach((el) => el.style.removeProperty(property))
+  editor.appendChild(wrapper)
+
+  const sel = window.getSelection()
+  if (sel) {
+    const next = document.createRange()
+    next.setStartBefore(caret)
+    next.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(next)
+  }
+  caret.remove()
+  editor.style.removeProperty(property)
+}
+
+/**
  * Wraps the selection in a span carrying one CSS property, clearing the same
  * property from anything inside so the newest choice wins.
  */
 export function applyInlineStyle(property: string, value: string) {
   const editor = activeEditor()
   const range = currentRange()
-  if (!editor || !range) return
+  if (!editor) return
 
-  if (range.collapsed) {
-    // Nothing selected: style the whole field. Spans the teacher styled earlier
-    // keep their own value rather than being silently overwritten.
-    editor.style.setProperty(property, value)
+  if (!range || range.collapsed) {
+    styleWholeField(editor, property, value, false)
     editor.dispatchEvent(new Event('input', { bubbles: true }))
     return
   }
@@ -174,7 +217,8 @@ export function applyBlockStyle(property: string, value: string) {
 
   const blocks = blocksInRange(editor, range)
   if (blocks.length === 0) {
-    editor.style.setProperty(property, value)
+    // No block to hang it on yet — make one, rather than styling the host.
+    styleWholeField(editor, property, value, true)
   } else {
     for (const block of blocks) block.style.setProperty(property, value)
   }
@@ -194,10 +238,17 @@ export function clearFormatting() {
   if (!editor) return
   if (range && !range.collapsed) {
     document.execCommand('removeFormat')
-    const fragment = range.cloneContents()
-    fragment.querySelectorAll?.('[style]').forEach((el) => el.removeAttribute('style'))
+    // removeFormat only unwinds inline formatting, so line spacing applied to a
+    // block survives it. Strip what is left from the *live* elements the
+    // selection covers: a cloned fragment gets thrown away with the styles
+    // still on it, which is how this used to do nothing at all.
+    const after = currentRange() ?? range
+    for (const el of Array.from(editor.querySelectorAll<HTMLElement>('[style]'))) {
+      if (after.intersectsNode(el)) el.removeAttribute('style')
+    }
   } else {
-    editor.removeAttribute('style')
+    // The host's style attribute belongs to React (the field's typography) and
+    // is not the teacher's formatting — only what is inside the field is.
     editor.querySelectorAll<HTMLElement>('[style]').forEach((el) => el.removeAttribute('style'))
   }
   editor.dispatchEvent(new Event('input', { bubbles: true }))
@@ -233,6 +284,14 @@ export function restoreSelection(): boolean {
   sel.removeAllRanges()
   sel.addRange(saved.range)
   return true
+}
+
+/** Drops one string in at the caret, keeping the browser's own undo stack. */
+export function insertText(text: string) {
+  const editor = activeEditor()
+  if (!editor) return
+  document.execCommand('insertText', false, text)
+  editor.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
 export function withSelection(action: () => void) {

@@ -10,6 +10,7 @@ import {
   DEVELOPER_URL,
   RATING_ENABLED,
 } from '../lib/config'
+import { spellcheckConfigured } from '../lib/spellcheck'
 
 const SIZES = [9, 10, 11, 12, 13, 14, 16, 18, 20, 24]
 const SPACINGS = [1, 1.15, 1.3, 1.5, 1.8, 2, 2.5]
@@ -30,6 +31,8 @@ interface Props {
   onPrivacy: () => void
   alreadyRated: boolean
   storageWorks: boolean
+  spellcheck: boolean
+  onSpellcheck: (enabled: boolean) => void
 }
 
 export default function SettingsPanel({
@@ -46,6 +49,8 @@ export default function SettingsPanel({
   onPrivacy,
   alreadyRated,
   storageWorks,
+  spellcheck,
+  onSpellcheck,
 }: Props) {
   const [linked, setLinked] = useState(true)
 
@@ -240,6 +245,23 @@ export default function SettingsPanel({
             ]}
           />
         </Row>
+      </section>
+
+      <section className="panel-section">
+        <h3>{t('spellcheckTitle')}</h3>
+        {spellcheckConfigured ? (
+          <>
+            <div className="toggle-list">
+              <Toggle label={t('spellcheck')} checked={spellcheck} onChange={onSpellcheck} />
+            </div>
+            <p className="panel-explain">{t('spellcheckHint')}</p>
+          </>
+        ) : (
+          <>
+            <p className="panel-explain">{t('spellcheckHint')}</p>
+            <p className="panel-hint">{t('spellcheckUnavailable')}</p>
+          </>
+        )}
       </section>
 
       <section className="panel-section">
