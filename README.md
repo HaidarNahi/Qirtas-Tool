@@ -16,7 +16,7 @@ only thing that leaves the device, and it can be switched off. See
 
 ```bash
 npm install
-cp .env.example .env   # then paste your Groq key in, for the spelling check
+cp .env.example .env   # then fill one line in, for the spelling check
 npm run dev
 ```
 
@@ -48,9 +48,10 @@ Point the provider at this repo and use:
 - Build command: `npm run build`
 - Publish directory: `dist`
 
-Set `VITE_GROQ_API_KEY` as an environment variable in the provider's dashboard,
-or the deployed build ships without the spelling check — `.env` is not in the
-repo, so the build has no other way to see it.
+Set `VITE_SPELLCHECK_PROXY` as an environment variable in the provider's
+dashboard, or the deployed build ships without the spelling check — `.env` is
+not in the repo, so the build has no other way to see it. Do not set
+`VITE_GROQ_API_KEY` on a deployed build: it ends up in the bundle, in public.
 
 Then add `qirtas.asasthaki.dev` as a custom domain in the provider's dashboard
 and follow its DNS instructions.
@@ -163,22 +164,40 @@ If a teacher does want selectable, searchable text, **الإعدادات → ا�
 
 Arabic and English, through Groq. A word that looks misspelled gets a red wavy
 underline; put the caret in it and the suggested spelling appears above it —
-tap to accept. Obscene words are covered by a blur patch rather than deleted,
-and a tap uncovers one for the rest of the session. The teacher's text is never
-rewritten without a tap, and the blur is an editor-only affordance: the sheet
-and the PDF always contain exactly what was typed.
+tap to accept. An obscene word gets a light red frame and a small warning badge
+above it; tapping the badge deletes that word, and nothing else does. The
+teacher's text is never changed without a tap, and both marks are editor-only:
+the sheet and the PDF always contain exactly what was typed.
+
+Obscenities are also caught offline, by `src/lib/profanity.ts`, which matches on
+a folded skeleton rather than a spelling — tashkeel and tatweel dropped, hamza
+and ة/ه unified, Arabizi digits and leetspeak mapped back to letters, stretched
+runs collapsed, and Arabic clitics peeled off both ends. Words that are only
+insults when aimed at a person (كلب، حمار، مجنون) are flagged only when the
+sentence aims them, and words with an innocent second meaning in a school
+subject (جنس، بول، شاذ، كافر) are left to the model.
 
 Switch it off in **الإعدادات → التدقيق الإملائي**. Off means no requests at all.
 
 ### Setting it up
 
-Put a Groq key in `.env` as `VITE_GROQ_API_KEY`. `VITE_GROQ_MODEL` overrides the
-model, which defaults to `openai/gpt-oss-20b`.
+Two routes to Groq, and only one of them can ship.
 
-**The key is public once you deploy.** Vite inlines env vars into the bundle at
-build time, so anyone who opens devtools on the site can read it — `.env` keeps
-it out of git and does nothing else. If that matters, put a small proxy in front
-of Groq that holds the key server-side, and point `GROQ_ENDPOINT` at it.
+**The proxy — use this to deploy.** The Apps Script Web App in
+`google-apps-script/`, the same one that receives ratings, holds the Groq key in
+its Script Properties and forwards the request. Set `VITE_SPELLCHECK_PROXY` to
+its `/exec` URL. Step 6 of `google-apps-script/README-SETUP.md` is the whole
+procedure, and it takes about two minutes on a deployment that already exists.
+
+**The direct key — local development only.** Put a Groq key in `.env` as
+`VITE_GROQ_API_KEY`; `VITE_GROQ_MODEL` overrides the model, which defaults to
+`openai/gpt-oss-20b`.
+
+**A direct key is public the moment you deploy.** Vite inlines env vars into the
+bundle at build time, so anyone who opens devtools on the site can read it —
+`.env` keeps it out of git and does nothing else. Making the repository private
+does not change this: the key is in the *built JavaScript*, not in the source.
+That is what the proxy is for. When both are set the proxy wins.
 
 ### Why it is built the way it is
 
@@ -196,7 +215,7 @@ of Groq that holds the key server-side, and point `GROQ_ENDPOINT` at it.
 - **Marks are an overlay, not markup.** Wrapping words in `<span>` would put the
   checker's opinion into the teacher's saved document, fight the caret on every
   keystroke, and be stripped by the sanitiser on the next load anyway. The
-  underlines and blur patches are absolutely positioned boxes measured from
+  underlines and obscenity frames are absolutely positioned boxes measured from
   `Range.getClientRects()`.
 - **Failure is quiet.** No key, no network, a timeout, a 429 — all of them fall
   back to the local obscenity list, and a failure starts a cooldown so the app
@@ -235,14 +254,16 @@ Two things can leave the device, and the privacy page
 (**الإعدادات → الخصوصية**) names both in plain Arabic:
 
 1. **The spelling check**, when it is on — which it is by default. It sends the
-   text of the field being edited to Groq and nothing else: not the whole sheet,
+   text of the field being edited to Groq — through the Apps Script relay, which
+   holds the key and stores nothing — and nothing else: not the whole sheet,
    not the teacher's name, not the school, and no identifier tying one field to
    another. Turning it off stops all of it.
 2. **A rating**, and only if the teacher chooses to send one.
 
 If you would rather ship with the check off by default, change `spellcheck` in
 `defaultPrefs` in [`src/lib/storage.ts`](src/lib/storage.ts). If you would
-rather it did not exist, leave `VITE_GROQ_API_KEY` unset and the feature never
+rather it did not exist, leave both `VITE_SPELLCHECK_PROXY` and
+`VITE_GROQ_API_KEY` unset and the feature never
 appears.
 
 ## Ratings (optional)
@@ -296,9 +317,10 @@ full-screen with no browser chrome and works offline.
 | `src/lib/richtext.ts` | Formatting commands, sanitising, selection handling |
 | `src/lib/pdf.ts` | Direct PDF export |
 | `src/lib/i18n.ts` | Arabic string table |
-| `src/lib/config.ts` | Rating endpoint, Groq key and model |
+| `src/lib/config.ts` | Rating endpoint, spelling-check proxy, Groq key and model |
 | `src/lib/rating.ts` | Rating submission, offline queue, retry |
 | `src/lib/spellcheck.ts` | Groq client, prompt, cache, cooldown |
+| `src/lib/profanity.ts` | Offline obscenity matching, Arabic and English |
 | `src/lib/profanity.ts` | Offline obscenity list |
 | `src/lib/textmap.ts` | Field text ⇄ DOM offsets, whole-word search |
 | `src/lib/symbols.ts` | The symbol library |

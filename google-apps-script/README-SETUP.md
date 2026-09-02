@@ -1,7 +1,11 @@
-# Receiving ratings in a Google Sheet
+# The Apps Script deployment
 
-Ten minutes, once. Until you finish it the rating feature stays hidden in the
-app and nothing is ever sent anywhere.
+One script, two jobs: it records ratings in a Google Sheet, and it holds the
+Groq key for the spelling check so the app never has to.
+
+Sections 1–5 set up ratings — ten minutes, once. Until you finish them the
+rating feature stays hidden in the app and nothing is ever sent anywhere.
+Section 6 turns on the spelling check, and takes about two more minutes.
 
 ## 1. Make the sheet
 
@@ -89,7 +93,7 @@ Rebuild (`npm run build`) and the rating option appears in الإعدادات.
 Open the `/exec` URL in a browser. You should see:
 
 ```json
-{"ok":true,"service":"qirtas-ratings"}
+{"ok":true,"service":"qirtas"}
 ```
 
 Then submit a rating from the app and watch a row appear in the **Ratings** tab.
@@ -123,7 +127,7 @@ If the count really is `0`, check these in order:
 - Open the `/exec` URL in a browser. `تعذر العثور على دالة النص البرمجي: doGet`
   means the deployed version does not contain the code — you saved `Code.gs`
   but did not deploy a **new version** (see the section below). A healthy
-  deployment answers `{"ok":true,"service":"qirtas-ratings"}`.
+  deployment answers `{"ok":true,"service":"qirtas"}`.
 - Run `setup` from the editor. If it throws about `SPREADSHEET_ID`, the script
   is standalone and the id is missing or wrong.
 - In **Manage deployments**, confirm **Who has access** is **Anyone**. If it
@@ -134,6 +138,59 @@ If the count really is `0`, check these in order:
 - Confirm the tab is still named **Ratings**. Renaming it in the spreadsheet
   makes the script create a fresh empty `Ratings` tab beside it and write
   there; `whereAmI` prints the tab it uses.
+
+## 6. Turn on the spelling check
+
+This is what makes the feature shippable. The app is client-side, so a Groq key
+handed to it at build time is inlined into the JS bundle and readable by anyone
+who opens devtools on the deployed site — `.env` keeps it off GitHub, and that
+is all it does. Put the key here instead and the browser never sees it.
+
+1. Get a free key at <https://console.groq.com/keys>. It starts with `gsk_`.
+2. In the Apps Script editor: **⚙ Project Settings → Script Properties →
+   Add script property**.
+   - **Property**: `GROQ_API_KEY`
+   - **Value**: your `gsk_…` key
+   - **Save script properties**
+3. Back in the editor, pick **`testSpellcheck`** in the function dropdown and
+   **Run**. The log should print something like:
+
+   ```json
+   {"ok":true,"content":"{\"issues\":[{\"word\":\"الرابطه\",\"suggestion\":\"الرابطة\",\"type\":\"spelling\"}]}"}
+   ```
+
+   `{"ok":false,"error":"spellcheck not configured"}` means the property name is
+   not exactly `GROQ_API_KEY`.
+4. **Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy**, so
+   the live URL serves the new code.
+5. Point the app at it. In `.env` in the project root:
+
+   ```
+   VITE_SPELLCHECK_PROXY=https://script.google.com/macros/s/AKfycb..../exec
+   ```
+
+   It is the same `/exec` URL as the ratings. Remove `VITE_GROQ_API_KEY` from
+   the `.env` you build with — with the proxy set the app ignores it anyway, but
+   an unused key inlined into a public bundle is still a leaked key.
+6. `npm run build`, deploy, and the check runs against the proxy.
+
+The key can be rotated at any time by editing that one script property — no
+rebuild, no redeploy of the app.
+
+### What it costs and where it runs out
+
+Groq's free tier is a **shared** per-minute token budget, and the proxy makes
+every teacher share the single key. The app already batches a whole sheet into
+one request and spaces requests four seconds apart, and `Code.gs` caps the
+endpoint at 60 spelling requests per minute across all users. That is
+comfortable for a class of teachers and will not survive going viral; if it
+starts returning `rate limited`, the fix is a paid Groq tier or a proxy on
+Cloudflare Workers, which is free up to 100k requests a day and adds much less
+latency than Apps Script does.
+
+Apps Script has its own ceilings on a consumer account: 20,000 `UrlFetch` calls
+and 90 minutes of runtime per day. A spelling request is well under a second of
+that runtime, so the fetch count is what runs out first.
 
 ## If you change `Code.gs` later
 

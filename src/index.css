@@ -633,9 +633,38 @@ button, label, select, input, [contenteditable], .seg-btn, .action, .toggle {
 .toolbar.is-visible { transform: translateY(0); }
 .app.is-toolbar-open .pane--edit { padding-bottom: calc(var(--toolbar-h, 150px) + var(--kb-inset, 0px) + 20px); }
 
+.tb-rows { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .tb-row { display: flex; align-items: center; gap: 3px; overflow-x: auto; scrollbar-width: none; }
 .tb-row::-webkit-scrollbar { display: none; }
 .tb-row--secondary { gap: 7px; }
+
+/* Phones get one scrolling line instead of two stacked rows.
+   The toolbar sits on top of the on-screen keyboard, so a second row costs
+   ~50px out of what little of the sheet is still visible while typing. Both
+   groups keep their own spacing and slide past each other in one scroller. */
+@media (max-width: 699px) {
+  .tb-rows {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* Swiping the toolbar must not drag the page behind it. */
+    overscroll-behavior-inline: contain;
+  }
+  .tb-rows::-webkit-scrollbar { display: none; }
+  /* The one scroller owns the overflow now; the groups only lay themselves out. */
+  .tb-row { flex: none; overflow: visible; }
+  /* Keeps the formatting group visibly separate from the sizing group. */
+  .tb-row--secondary::before {
+    content: '';
+    flex: none;
+    width: 1px;
+    height: 22px;
+    background: var(--line);
+    margin-inline-end: 3px;
+  }
+}
 
 .tb-btn {
   flex: none;
@@ -1277,30 +1306,42 @@ button, label, select, input, [contenteditable], .seg-btn, .action, .toggle {
   background-size: 6px 3px;
 }
 
-/* Obscenities are covered, never deleted: the sheet keeps what was typed. */
-.rt-blur {
-  position: absolute;
-  pointer-events: auto;
-  border: 0;
-  padding: 0;
-  border-radius: 4px;
-  cursor: pointer;
-  background: rgba(87, 83, 78, .34);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
-  /* Spread slightly past the glyphs so no letter peeks out at the edge. */
-  box-shadow: 0 0 0 2px rgba(87, 83, 78, .34);
-}
-@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
-  .rt-blur { background: #57534E; box-shadow: 0 0 0 2px #57534E; }
-}
-/* Once uncovered the patch stops intercepting taps, so the word underneath can
-   be selected and edited like any other. */
-.rt-flagged {
+/* An obscenity is framed, not hidden: the word stays readable, selectable and
+   editable, and nothing is removed unless the warning above it is tapped. */
+.rt-flag {
   position: absolute;
   pointer-events: none;
-  border-bottom: 2px dotted #D08A00;
+  /* Sits a hair outside the glyphs so the frame does not clip the letters. */
+  margin: -1px;
+  padding: 1px;
+  /* Translucent, because this layer paints on top of the text it marks —
+     an opaque fill here is the blur this replaced. */
+  border: 1px solid rgba(175, 54, 45, .42);
+  border-radius: 4px;
+  background: rgba(175, 54, 45, .09);
 }
+
+.rt-flag-del {
+  position: absolute;
+  z-index: 7;
+  /* Centred on the word and lifted clear of it. */
+  transform: translate(-50%, -100%);
+  margin-top: -3px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--danger-line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--danger);
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(19, 30, 24, .18);
+  transition: transform .09s, background .13s;
+}
+.rt-flag-del:active { transform: translate(-50%, -100%) scale(.86); background: var(--danger-bg); }
 
 .rt-suggest {
   position: absolute;
@@ -1338,14 +1379,6 @@ button, label, select, input, [contenteditable], .seg-btn, .action, .toggle {
 }
 .rt-suggest:active { transform: translateY(-100%) scale(.95); }
 
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
 
 /* =========================================================== pointers */
 @media (hover: hover) and (pointer: fine) {
@@ -1356,6 +1389,7 @@ button, label, select, input, [contenteditable], .seg-btn, .action, .toggle {
   .icon-btn:hover:not(:disabled) { background: var(--brand-050); color: var(--brand-700); }
   .icon-btn--danger:hover:not(:disabled) { background: var(--danger-bg); color: var(--danger); }
   .icon-btn--bar:hover { background: rgba(255,255,255,.2); color: #fff; }
+  .rt-flag-del:hover { background: var(--danger-bg); border-color: var(--danger); }
   .tb-btn:hover:not(.is-active) { background: var(--brand-050); }
   .tb-chip:hover { border-color: var(--brand-400); color: var(--brand-900); }
   .q-badge:hover { background: var(--brand-200); }

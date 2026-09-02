@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { sanitizeHtml, isBlank } from '../lib/richtext'
 import { registerField, updateField, type Issue, type IssueType } from '../lib/spellcheck'
 import { findWord, rangeAt, readTextMap, offsetAt } from '../lib/textmap'
@@ -62,7 +62,7 @@ export default function RichText({
   const ref = useRef<HTMLDivElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const fieldId = useId()
-  const { enabled, revealed, toggleRevealed } = useSpellcheckSettings()
+  const { enabled } = useSpellcheckSettings()
 
   const [issues, setIssues] = useState<Issue[]>([])
   const [marks, setMarks] = useState<Mark[]>([])
@@ -224,6 +224,46 @@ export default function RichText({
     handleInput()
   }
 
+  /**
+   * Takes an obscenity out of the text, on request only.
+   *
+   * The mark itself never touches the document — a teacher who meant to write
+   * the word keeps it, and the PDF is the same either way. This runs when the
+   * warning above the word is tapped, and nothing else removes anything.
+   */
+  const removeWord = (mark: Mark) => {
+    const el = ref.current
+    if (!el) return
+    const map = readTextMap(el)
+    // The offsets were measured against an earlier reading of the field, so
+    // check they still point at the word before deleting anything.
+    if (!map.text.slice(mark.from, mark.to).toLowerCase().endsWith(mark.word.toLowerCase())) return
+
+    // Swallow one neighbouring space too, or removing a word from the middle of
+    // a sentence leaves a gap where it used to be.
+    let from = mark.from
+    let to = mark.to
+    if (map.text[to] === ' ') to += 1
+    else if (from > 0 && map.text[from - 1] === ' ') from -= 1
+
+    const range = rangeAt(map, from, to)
+    const selection = window.getSelection()
+    if (!range || !selection) return
+
+    selection.removeAllRanges()
+    selection.addRange(range)
+    el.focus({ preventScroll: true })
+    // Deliberately execCommand rather than range.deleteContents(): it goes on
+    // the browser's own undo stack, so a badge tapped by accident is one ⌘Z
+    // away from being undone. A direct DOM mutation is not undoable at all,
+    // and this button sits on top of the text it would remove.
+    document.execCommand('delete')
+
+    // The marks are re-measured from the new text, so the same word elsewhere
+    // in the field keeps its own warning.
+    handleInput()
+  }
+
   /* -------------------------------------------------------------- editing */
 
   /** Shared by paste and drop — both bring in markup the app did not write. */
@@ -304,21 +344,39 @@ export default function RichText({
 
       {marks.length > 0 && (
         <div className="rt-marks">
-          {marks.map((mark) =>
-            mark.rects.map((rect, index) =>
-              mark.type === 'profanity' ? (
-                <ProfanityPatch
-                  key={`${mark.key}:${index}`}
-                  rect={rect}
-                  word={mark.word}
-                  revealed={revealed.has(mark.word.toLowerCase())}
-                  onReveal={() => toggleRevealed(mark.word)}
+          {marks.map((mark) => (
+            <Fragment key={mark.key}>
+              {mark.rects.map((rect, index) => (
+                <span
+                  key={index}
+                  className={mark.type === 'profanity' ? 'rt-flag' : 'rt-underline'}
+                  style={toStyle(rect)}
+                  aria-hidden
                 />
-              ) : (
-                <span key={`${mark.key}:${index}`} className="rt-underline" style={toStyle(rect)} aria-hidden />
-              ),
-            ),
-          )}
+              ))}
+              {/* One warning per word, not per line, so a word that wraps does
+                  not sprout a second button on the line it wrapped onto. */}
+              {mark.type === 'profanity' && mark.rects[0] && (
+                <button
+                  type="button"
+                  className="rt-flag-del"
+                  style={{
+                    left: `${mark.rects[0].left + mark.rects[0].width / 2}px`,
+                    top: `${mark.rects[0].top}px`,
+                  }}
+                  aria-label={`${t('removeWord')}: ${mark.word}`}
+                  title={t('removeWord')}
+                  // The field must not lose focus, or the button unmounts
+                  // before the click meant for it lands.
+                  onPointerDown={(event) => event.preventDefault()}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => removeWord(mark)}
+                >
+                  <IconWarn />
+                </button>
+              )}
+            </Fragment>
+          ))}
         </div>
       )}
 
@@ -348,7 +406,7 @@ export default function RichText({
  * contenteditable splits into that many runs — which drew a separate underline
  * segment under every letter. Rects on the same line get folded into the span
  * they cover; a word that wraps still gets one box per line, which is what the
- * underline and the blur patch both want.
+ * underline and the obscenity frame both want.
  */
 function mergeLines(rects: Rect[]): Rect[] {
   if (rects.length < 2) return rects
@@ -376,36 +434,19 @@ function toStyle(rect: Rect): React.CSSProperties {
   return { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` }
 }
 
-/**
- * Covers an obscenity rather than removing it: the sheet keeps exactly what was
- * typed, and the PDF is untouched. Revealing is one-way on purpose — once the
- * patch is gone the word underneath can be selected and edited normally, which
- * a permanently clickable box sitting on top of it would prevent.
- */
-function ProfanityPatch({
-  rect,
-  word,
-  revealed,
-  onReveal,
-}: {
-  rect: Rect
-  word: string
-  revealed: boolean
-  onReveal: () => void
-}) {
-  if (revealed) return <span className="rt-flagged" style={toStyle(rect)} aria-hidden />
+/** The badge that sits above a flagged word and removes it when tapped. */
+function IconWarn() {
   return (
-    <button
-      type="button"
-      className="rt-blur"
-      style={toStyle(rect)}
-      aria-label={t('revealWord')}
-      title={t('revealWord')}
-      onPointerDown={(event) => event.preventDefault()}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={onReveal}
-    >
-      <span className="visually-hidden">{word}</span>
-    </button>
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden>
+      <path
+        d="M8 1.6 15 14H1z"
+        fill="currentColor"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path d="M8 5.6v3.6" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" />
+      <circle cx="8" cy="11.4" r="1" fill="#fff" />
+    </svg>
   )
 }
