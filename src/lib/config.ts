@@ -32,23 +32,30 @@ export const COPYRIGHT_YEAR = '2026'
 
 /**
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │  SPELLING CHECK — Groq Cloud.                                            │
+ * │  SPELLING CHECK — Groq Cloud, one of two ways.                           │
  * │                                                                          │
- * │  The key comes from `.env` (gitignored) as VITE_GROQ_API_KEY. There is   │
- * │  deliberately no fallback baked in here: a key committed to the repo is  │
- * │  a key on GitHub.                                                        │
+ * │  THE PROXY (VITE_SPELLCHECK_PROXY) is the one to deploy with. It is the  │
+ * │  same Apps Script Web App the ratings already use; the Groq key sits in  │
+ * │  its Script Properties, and the browser never sees it. Point this at the │
+ * │  /exec URL and the feature is safe to ship publicly.                     │
  * │                                                                          │
- * │  Be clear-eyed about what this can and cannot protect. The app is        │
- * │  client-side, so whatever key is present at BUILD time is readable by    │
- * │  anyone who opens devtools on the deployed site — `.env` keeps it out    │
- * │  of version control, nothing more. The only real fix is a small proxy    │
- * │  that holds the key server-side and forwards the request.                │
+ * │  THE DIRECT KEY (VITE_GROQ_API_KEY) is for local work only. Be           │
+ * │  clear-eyed about it: the app is client-side, so whatever key is present │
+ * │  at BUILD time is readable by anyone who opens devtools on the deployed  │
+ * │  site. `.env` keeps it out of version control and nothing more — it is   │
+ * │  not a way to ship the feature, which is what the proxy is for. There is │
+ * │  deliberately no fallback key baked in here: a key committed to the repo │
+ * │  is a key on GitHub.                                                     │
  * │                                                                          │
- * │  With no key the feature disables itself: no requests, and the settings  │
- * │  row says why.                                                           │
+ * │  With neither set the feature disables itself: no requests, and the      │
+ * │  settings row says why.                                                  │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 export const GROQ_API_KEY: string = (import.meta.env.VITE_GROQ_API_KEY as string | undefined)?.trim() ?? ''
+
+/** Apps Script /exec URL that holds the key. Wins over the direct key. */
+export const SPELLCHECK_PROXY: string =
+  (import.meta.env.VITE_SPELLCHECK_PROXY as string | undefined)?.trim() ?? ''
 
 export const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions'
 
@@ -60,5 +67,5 @@ export const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions'
 export const GROQ_MODEL: string =
   (import.meta.env.VITE_GROQ_MODEL as string | undefined)?.trim() || 'openai/gpt-oss-20b'
 
-/** The check is only offered when a key was present at build time. */
-export const SPELLCHECK_AVAILABLE = GROQ_API_KEY.length > 0
+/** The check is only offered when there is somewhere to send the request. */
+export const SPELLCHECK_AVAILABLE = SPELLCHECK_PROXY.length > 0 || GROQ_API_KEY.length > 0

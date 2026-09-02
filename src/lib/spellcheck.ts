@@ -1,9 +1,11 @@
-import { GROQ_API_KEY, GROQ_ENDPOINT, GROQ_MODEL, SPELLCHECK_AVAILABLE } from './config'
+import { GROQ_API_KEY, GROQ_ENDPOINT, GROQ_MODEL, SPELLCHECK_AVAILABLE, SPELLCHECK_PROXY } from './config'
 import { findProfanity } from './profanity'
 import { findWord } from './textmap'
 
 /**
- * Arabic/English spelling check, through Groq.
+ * Arabic/English spelling check, through Groq — directly with a build-time key
+ * when developing, or through the Apps Script proxy that holds the key when
+ * deployed. See the note in lib/config.ts for why only one of those can ship.
  *
  * This is the one part of قِرطاس that sends what a teacher typed off the device,
  * so it is deliberately narrow: the text of a single field, nothing else — no
@@ -21,11 +23,16 @@ export type IssueType = 'spelling' | 'profanity'
 export interface Issue {
   /** Copied from the text exactly as written, so it can be found again. */
   word: string
-  /** Empty for obscenities: those are blurred, never rewritten. */
+  /** Empty for obscenities: those are framed and removed whole, never rewritten. */
   suggestion: string
   type: IssueType
 }
 
+/**
+ * Only used when talking to Groq directly with a build-time key. Through the
+ * proxy the instructions live in Code.gs instead, so that an endpoint whose URL
+ * is public cannot be handed an arbitrary prompt — KEEP THE TWO IN SYNC.
+ */
 const SYSTEM_PROMPT = `You check spelling on school exam papers written in Arabic, English, or both. You reply with JSON only.
 
 Shape: {"issues":[{"word":"...","suggestion":"...","type":"spelling"}]}
@@ -183,24 +190,34 @@ async function ask(text: string): Promise<Issue[]> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
-    const response = await fetch(GROQ_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        temperature: 0,
-        reasoning_effort: 'low',
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: text },
-        ],
-      }),
-      signal: controller.signal,
-    })
+    const response = SPELLCHECK_PROXY
+      ? // text/plain is CORS-safelisted, so the browser skips the preflight
+        // that Apps Script never answers. Same trick as lib/rating.ts.
+        await fetch(SPELLCHECK_PROXY, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ kind: 'spellcheck', text }),
+          redirect: 'follow',
+          signal: controller.signal,
+        })
+      : await fetch(GROQ_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: GROQ_MODEL,
+            temperature: 0,
+            reasoning_effort: 'low',
+            response_format: { type: 'json_object' },
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'user', content: text },
+            ],
+          }),
+          signal: controller.signal,
+        })
 
     if (!response.ok) {
       cooldownUntil = Date.now() + (response.status === 429 ? RATE_LIMIT_COOLDOWN_MS : COOLDOWN_MS)
@@ -208,6 +225,17 @@ async function ask(text: string): Promise<Issue[]> {
     }
 
     const data = await response.json()
+
+    if (SPELLCHECK_PROXY) {
+      // Apps Script answers 200 with its own error shape, so the status alone
+      // proves nothing. A rate limit upstream is still a rate limit here.
+      if (data?.ok !== true) {
+        cooldownUntil = Date.now() + (data?.status === 429 ? RATE_LIMIT_COOLDOWN_MS : COOLDOWN_MS)
+        return []
+      }
+      return parseIssues(data.content, text)
+    }
+
     return parseIssues(data?.choices?.[0]?.message?.content, text)
   } catch {
     cooldownUntil = Date.now() + COOLDOWN_MS

@@ -1,38 +1,22 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
 interface SpellcheckValue {
   enabled: boolean
-  /** Obscenities the teacher has tapped to uncover, for this session only. */
-  revealed: ReadonlySet<string>
-  toggleRevealed: (word: string) => void
 }
 
-const SpellcheckContext = createContext<SpellcheckValue>({
-  enabled: false,
-  revealed: new Set(),
-  toggleRevealed: () => {},
-})
+const SpellcheckContext = createContext<SpellcheckValue>({ enabled: false })
 
 /**
- * Reveal state is shared rather than per-field on purpose: uncovering a word
- * once uncovers it everywhere it appears, so a teacher reviewing a paper does
- * not have to tap the same word in six questions.
+ * Carries the one setting every field needs, without threading it through the
+ * whole editor tree.
  *
- * It is deliberately not persisted — every reload starts covered again.
+ * It used to also hold which obscenities had been uncovered, back when they
+ * were hidden behind a blur. They are framed in place now — the word stays
+ * readable and editable, and the warning above it removes it on request — so
+ * there is no reveal state left to share.
  */
 export function SpellcheckProvider({ enabled, children }: { enabled: boolean; children: ReactNode }) {
-  const [revealed, setRevealed] = useState<ReadonlySet<string>>(() => new Set())
-
-  const toggleRevealed = useCallback((word: string) => {
-    setRevealed((current) => {
-      const next = new Set(current)
-      const key = word.toLowerCase()
-      next.has(key) ? next.delete(key) : next.add(key)
-      return next
-    })
-  }, [])
-
-  const value = useMemo(() => ({ enabled, revealed, toggleRevealed }), [enabled, revealed, toggleRevealed])
+  const value = useMemo(() => ({ enabled }), [enabled])
   return <SpellcheckContext.Provider value={value}>{children}</SpellcheckContext.Provider>
 }
 

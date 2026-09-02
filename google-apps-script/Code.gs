@@ -1,12 +1,21 @@
 /**
- * قِرطاس — receiver for app ratings.
+ * قِرطاس — the app's one server-side piece.
  *
- * Appends one row per rating to a sheet named "Ratings". It only ever receives
- * what the teacher typed into the rating form: a score, an optional comment,
- * and a coarse platform string. No exam content is sent by the app, so none can
- * arrive here.
+ * It does two unrelated jobs, told apart by `kind` on the POST body:
  *
- * Setup is in README-SETUP.md next to this file.
+ *  1. Ratings (no `kind`). Appends one row per rating to a sheet named
+ *     "Ratings". It only ever receives what the teacher typed into the rating
+ *     form: a score, an optional comment, and a coarse platform string. No exam
+ *     content is sent by the app, so none can arrive here.
+ *
+ *  2. Spelling check (`kind: "spellcheck"`). Forwards one field's text to Groq
+ *     and hands the answer back. This exists for one reason: the app is
+ *     client-side, so a Groq key given to it at build time is readable by
+ *     anyone who opens devtools on the deployed site. Here the key sits in
+ *     Script Properties and never reaches the browser. Nothing is stored, and
+ *     nothing is written to the spreadsheet — the text passes through.
+ *
+ * Setup for both is in README-SETUP.md next to this file.
  */
 
 /**
@@ -36,22 +45,35 @@ var MAX_ROWS = 50000
 
 /** Handles the POST the app sends (Content-Type: text/plain). */
 function doPost(e) {
+  if (!e || !e.postData || !e.postData.contents) {
+    return jsonOut({ ok: false, error: 'empty body' })
+  }
+
+  var data
+  try {
+    data = JSON.parse(e.postData.contents)
+  } catch (err) {
+    return jsonOut({ ok: false, error: 'bad json' })
+  }
+
+  // The spelling check takes no lock and touches no sheet, so it must not go
+  // through the rating path — it would serialise every keystroke behind it.
+  if (data && data.kind === 'spellcheck') return handleSpellcheck(data)
+  return handleRating(data)
+}
+
+function handleRating(data) {
   var lock = LockService.getScriptLock()
   try {
     // Serialise appends so two ratings arriving together cannot collide.
     lock.waitLock(20000)
 
-    if (!e || !e.postData || !e.postData.contents) {
-      return jsonOut({ ok: false, error: 'empty body' })
-    }
-
-    var data = JSON.parse(e.postData.contents)
     var rating = Number(data.rating)
     if (!(rating >= 1 && rating <= 5)) {
       return jsonOut({ ok: false, error: 'rating must be 1-5' })
     }
 
-    if (isFlooding()) {
+    if (isFlooding('rate', MAX_PER_MINUTE)) {
       return jsonOut({ ok: false, error: 'rate limited' })
     }
 
@@ -82,7 +104,7 @@ function doPost(e) {
   } catch (err) {
     // The /exec URL is public, so the detail goes to the execution log and the
     // caller gets a bare failure.
-    Logger.log('doPost failed: ' + err)
+    Logger.log('handleRating failed: ' + err)
     return jsonOut({ ok: false, error: 'could not record rating' })
   } finally {
     try {
@@ -157,16 +179,151 @@ function describeTarget(sheet) {
 
 /** Opening the /exec URL in a browser should say something reassuring. */
 function doGet() {
-  return jsonOut({ ok: true, service: 'qirtas-ratings' })
+  return jsonOut({ ok: true, service: 'qirtas' })
 }
 
-/** Rolling per-minute counter kept in the script cache. */
-function isFlooding() {
+/* ======================================================== spelling check */
+
+/**
+ * The key lives in Script Properties, never in this file and never in the app.
+ *
+ * Set it once, from the Apps Script editor:
+ *   Project Settings → Script Properties → Add
+ *   Property: GROQ_API_KEY      Value: gsk_...
+ *
+ * With no property set the endpoint answers "not configured" and the app
+ * quietly turns the feature off — exactly as it does with no key at all.
+ */
+var GROQ_KEY_PROPERTY = 'GROQ_API_KEY'
+var GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions'
+var GROQ_MODEL = 'openai/gpt-oss-20b'
+
+/** One sheet's worth of text. The app batches a whole sweep into one request. */
+var SPELLCHECK_MAX_CHARS = 4000
+
+/**
+ * Groq's free tier is a token budget per minute, shared by every user of the
+ * deployment — so this ceiling is what stops one open tab from spending the
+ * whole school's allowance. Well above what one teacher can type, well below
+ * what a script can.
+ */
+var SPELLCHECK_MAX_PER_MINUTE = 60
+var SPELLCHECK_TIMEOUT_MS = 20000
+
+/**
+ * The instructions live here rather than in the request.
+ *
+ * A proxy that forwards whatever prompt it is handed is a free LLM for anyone
+ * who finds the URL. This one only ever asks the one question the app exists to
+ * ask, so the worst an abuser gets is their spelling checked.
+ *
+ * KEEP IN SYNC with SYSTEM_PROMPT in src/lib/spellcheck.ts, which is the same
+ * text used when the app talks to Groq directly with a build-time key.
+ */
+var SYSTEM_PROMPT = [
+  'You check spelling on school exam papers written in Arabic, English, or both. You reply with JSON only.',
+  '',
+  'Shape: {"issues":[{"word":"...","suggestion":"...","type":"spelling"}]}',
+  '',
+  '- "word" MUST be copied from the input character for character. Never normalise it. Include any attached Arabic prefix (و ف ب ك ل ال) exactly as written.',
+  '- "type" is "spelling" for a misspelling, or "profanity" for an obscene, vulgar or insulting word.',
+  '- For "profanity", "suggestion" MUST be "".',
+  '',
+  'In ARABIC these ARE misspellings and you SHOULD report them:',
+  '- a missing or wrong hamza: الايون → الأيون, اسئلة → أسئلة, ياتي → يأتي',
+  '- ه written where ة belongs at the end of a word: النبيله → النبيلة, الرابطه → الرابطة',
+  '- ي written where ى belongs, or ى where ي belongs, at the end of a word',
+  '- letters transposed, doubled or dropped',
+  '',
+  'In ENGLISH report ordinary misspellings: studnet → student, quastion → question.',
+  '',
+  'Report a spelling issue ONLY when the word is genuinely misspelled. When unsure, say nothing. Never report:',
+  '- proper nouns, place names, school names, or people\'s names',
+  '- chemical formulas, symbols, units, variables, or numbers',
+  '- abbreviations and acronyms',
+  '- missing tashkeel (the optional short-vowel marks) — their absence is normal and correct',
+  '- grammar, word choice, agreement, punctuation or spacing',
+  '- an English word inside Arabic text, or an Arabic word inside English text',
+  '',
+  'If nothing is wrong, reply {"issues":[]}.',
+].join('\n')
+
+/**
+ * Forwards one field's text to Groq and hands back the raw JSON string.
+ *
+ * Nothing is logged and nothing is stored: the text arrives, goes to Groq, and
+ * the answer goes back. That is the whole point of the hop — it exists so the
+ * key does not have to ship inside the app, not to collect anything.
+ */
+function handleSpellcheck(data) {
+  var key = PropertiesService.getScriptProperties().getProperty(GROQ_KEY_PROPERTY)
+  if (!key) return jsonOut({ ok: false, error: 'spellcheck not configured' })
+
+  var text = String(data.text || '').slice(0, SPELLCHECK_MAX_CHARS)
+  if (!text.trim()) return jsonOut({ ok: false, error: 'empty text' })
+
+  if (isFlooding('spell', SPELLCHECK_MAX_PER_MINUTE)) {
+    return jsonOut({ ok: false, error: 'rate limited' })
+  }
+
+  try {
+    var response = UrlFetchApp.fetch(GROQ_ENDPOINT, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + key },
+      payload: JSON.stringify({
+        model: GROQ_MODEL,
+        temperature: 0,
+        reasoning_effort: 'low',
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: text },
+        ],
+      }),
+      muteHttpExceptions: true,
+      validateHttpsCertificates: true,
+      followRedirects: true,
+      timeout: SPELLCHECK_TIMEOUT_MS,
+    })
+
+    var status = response.getResponseCode()
+    if (status !== 200) {
+      // The app backs off on its own; 429 makes it back off for longer.
+      return jsonOut({ ok: false, error: 'upstream ' + status, status: status })
+    }
+
+    var body = JSON.parse(response.getContentText())
+    var content =
+      body && body.choices && body.choices[0] && body.choices[0].message
+        ? body.choices[0].message.content
+        : ''
+
+    return jsonOut({ ok: true, content: String(content || '') })
+  } catch (err) {
+    Logger.log('handleSpellcheck failed: ' + err)
+    return jsonOut({ ok: false, error: 'upstream failed' })
+  }
+}
+
+/** Run this from the editor to check the key and the whole path in one go. */
+function testSpellcheck() {
+  var result = handleSpellcheck({ kind: 'spellcheck', text: 'اكتب الرابطه الايونيه. the studnet is here.' })
+  Logger.log(result.getContent())
+}
+
+/**
+ * Rolling per-minute counter kept in the script cache.
+ *
+ * One bucket per job: a burst of spelling checks must not lock out ratings,
+ * and the two have very different natural rates.
+ */
+function isFlooding(bucket, limit) {
   var cache = CacheService.getScriptCache()
-  var key = 'rate-' + Math.floor(Date.now() / 60000)
+  var key = bucket + '-' + Math.floor(Date.now() / 60000)
   var count = Number(cache.get(key) || 0) + 1
   cache.put(key, String(count), 120)
-  return count > MAX_PER_MINUTE
+  return count > limit
 }
 
 /**

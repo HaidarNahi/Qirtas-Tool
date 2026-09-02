@@ -172,108 +172,112 @@ export default function Toolbar({ visible, defaultSize }: Props) {
         </div>
       )}
 
-      <div className="tb-row tb-row--main">
-        {cmd('bold', t('bold'), <strong>B</strong>, queryState('bold'))}
-        {cmd('italic', t('italic'), <em>I</em>, queryState('italic'))}
-        {cmd('underline', t('underline'), <u>U</u>, queryState('underline'))}
-        <span className="tb-sep" />
-        {cmd('subscript', t('subscript'), <span>X<sub>2</sub></span>, queryState('subscript'))}
-        {cmd('superscript', t('superscript'), <span>X<sup>2</sup></span>, queryState('superscript'))}
-        <span className="tb-sep" />
-        {cmd('insertOrderedList', t('orderedList'), <IconOrdered />, queryState('insertOrderedList'))}
-        {cmd('insertUnorderedList', t('unorderedList'), <IconUnordered />, queryState('insertUnorderedList'))}
-        <span className="tb-sep" />
-        <button
-          type="button"
-          className="tb-btn"
-          title={t('clearFormat')}
-          aria-label={t('clearFormat')}
-          onPointerDown={hold}
-          onClick={run(clearFormatting)}
-        >
-          <IconClear />
-        </button>
-      </div>
-
-      <div className="tb-row tb-row--secondary">
-        {/* First in the row, so RTL puts it under the thumb rather than off the
-            left edge — this row overflows and scrolls on a 375px phone. */}
-        <button
-          type="button"
-          className={`tb-btn tb-btn--wide ${panel === 'symbols' ? 'is-active' : ''}`}
-          title={t('symbols')}
-          aria-label={t('symbols')}
-          onPointerDown={hold}
-          onClick={() => setPanel(panel === 'symbols' ? null : 'symbols')}
-        >
-          <IconSymbols />
-        </button>
-
-        <select
-          className="tb-select"
-          value={currentFont()}
-          aria-label={t('font')}
-          onPointerDown={() => saveSelection()}
-          onChange={(e) => {
-            const key = e.target.value as FontKey
-            if (key) withSelection(() => applyInlineStyle('font-family', FONT_STACKS[key]))
-          }}
-        >
-          <option value="">{t('font')}</option>
-          {(Object.keys(FONT_LABELS) as FontKey[]).map((key) => (
-            <option key={key} value={key} style={{ fontFamily: FONT_STACKS[key] }}>
-              {FONT_LABELS[key]}
-            </option>
-          ))}
-        </select>
-
-        <div className="tb-stepper" aria-label={t('textSize')}>
+      {/* One scroll container. On a phone the two rows sit side by side inside it
+          and scroll as a single line; from 700px up they stack as before. */}
+      <div className="tb-rows">
+        <div className="tb-row tb-row--main">
+          {cmd('bold', t('bold'), <strong>B</strong>, queryState('bold'))}
+          {cmd('italic', t('italic'), <em>I</em>, queryState('italic'))}
+          {cmd('underline', t('underline'), <u>U</u>, queryState('underline'))}
+          <span className="tb-sep" />
+          {cmd('subscript', t('subscript'), <span>X<sub>2</sub></span>, queryState('subscript'))}
+          {cmd('superscript', t('superscript'), <span>X<sup>2</sup></span>, queryState('superscript'))}
+          <span className="tb-sep" />
+          {cmd('insertOrderedList', t('orderedList'), <IconOrdered />, queryState('insertOrderedList'))}
+          {cmd('insertUnorderedList', t('unorderedList'), <IconUnordered />, queryState('insertUnorderedList'))}
+          <span className="tb-sep" />
           <button
             type="button"
-            className="tb-btn tb-btn--sm"
-            aria-label="−"
+            className="tb-btn"
+            title={t('clearFormat')}
+            aria-label={t('clearFormat')}
             onPointerDown={hold}
-            onClick={run(() => {
-              const next = SIZES.filter((s) => s < size).pop() ?? SIZES[0]
-              applyInlineStyle('font-size', `${next}pt`)
-            })}
+            onClick={run(clearFormatting)}
           >
-            −
-          </button>
-          <span className="tb-size">{size}</span>
-          <button
-            type="button"
-            className="tb-btn tb-btn--sm"
-            aria-label="+"
-            onPointerDown={hold}
-            onClick={run(() => {
-              const next = SIZES.find((s) => s > size) ?? SIZES[SIZES.length - 1]
-              applyInlineStyle('font-size', `${next}pt`)
-            })}
-          >
-            +
+            <IconClear />
           </button>
         </div>
 
-        <button
-          type="button"
-          className={`tb-btn tb-btn--wide ${panel === 'spacing' ? 'is-active' : ''}`}
-          title={t('lineSpacing')}
-          onPointerDown={hold}
-          onClick={() => setPanel(panel === 'spacing' ? null : 'spacing')}
-        >
-          <IconSpacing />
-        </button>
+        <div className="tb-row tb-row--secondary">
+          {/* First in the group, so RTL keeps it on the thumb side rather than
+              off the left edge — both groups overflow and scroll on a phone. */}
+          <button
+            type="button"
+            className={`tb-btn tb-btn--wide ${panel === 'symbols' ? 'is-active' : ''}`}
+            title={t('symbols')}
+            aria-label={t('symbols')}
+            onPointerDown={hold}
+            onClick={() => setPanel(panel === 'symbols' ? null : 'symbols')}
+          >
+            <IconSymbols />
+          </button>
 
-        <button
-          type="button"
-          className={`tb-btn tb-btn--wide ${panel === 'color' ? 'is-active' : ''}`}
-          title={t('textColor')}
-          onPointerDown={hold}
-          onClick={() => setPanel(panel === 'color' ? null : 'color')}
-        >
-          <IconColor />
-        </button>
+          <select
+            className="tb-select"
+            value={currentFont()}
+            aria-label={t('font')}
+            onPointerDown={() => saveSelection()}
+            onChange={(e) => {
+              const key = e.target.value as FontKey
+              if (key) withSelection(() => applyInlineStyle('font-family', FONT_STACKS[key]))
+            }}
+          >
+            <option value="">{t('font')}</option>
+            {(Object.keys(FONT_LABELS) as FontKey[]).map((key) => (
+              <option key={key} value={key} style={{ fontFamily: FONT_STACKS[key] }}>
+                {FONT_LABELS[key]}
+              </option>
+            ))}
+          </select>
+
+          <div className="tb-stepper" aria-label={t('textSize')}>
+            <button
+              type="button"
+              className="tb-btn tb-btn--sm"
+              aria-label="−"
+              onPointerDown={hold}
+              onClick={run(() => {
+                const next = SIZES.filter((s) => s < size).pop() ?? SIZES[0]
+                applyInlineStyle('font-size', `${next}pt`)
+              })}
+            >
+              −
+            </button>
+            <span className="tb-size">{size}</span>
+            <button
+              type="button"
+              className="tb-btn tb-btn--sm"
+              aria-label="+"
+              onPointerDown={hold}
+              onClick={run(() => {
+                const next = SIZES.find((s) => s > size) ?? SIZES[SIZES.length - 1]
+                applyInlineStyle('font-size', `${next}pt`)
+              })}
+            >
+              +
+            </button>
+        </div>
+
+          <button
+            type="button"
+            className={`tb-btn tb-btn--wide ${panel === 'spacing' ? 'is-active' : ''}`}
+            title={t('lineSpacing')}
+            onPointerDown={hold}
+            onClick={() => setPanel(panel === 'spacing' ? null : 'spacing')}
+          >
+            <IconSpacing />
+          </button>
+
+          <button
+            type="button"
+            className={`tb-btn tb-btn--wide ${panel === 'color' ? 'is-active' : ''}`}
+            title={t('textColor')}
+            onPointerDown={hold}
+            onClick={() => setPanel(panel === 'color' ? null : 'color')}
+          >
+            <IconColor />
+          </button>
+        </div>
       </div>
     </div>
   )
